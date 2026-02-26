@@ -299,6 +299,10 @@ subroutine check_arg_validity()
         print*, "Simulation performed using the continuation convective solver with explicit Coriolis"
     else if (solver == "continuation_convective_implicit") then
         print*, "Simulation performed using the continuation convective solver with implicit Coriolis"
+    else if (solver == "arnoldi_convective_explicit") then
+        print*, "Simulation performed using the Arnoldi convective solver with explicit Coriolis"
+    else if (solver == "arnoldi_convective_implicit") then
+        print*, "Simulation performed using the Arnoldi convective solver with implicit Coriolis"
     else
         print*, "Simulation stopped - solver has an invalid value"
         stop
@@ -309,12 +313,14 @@ subroutine check_arg_validity()
         print*, 'No timestepping scheme selected, switching to predictor-corrector'
         time_step = 'pc'
     else if (((solver == 'newton_convective_explicit') .or. (solver == 'newton_convective_implicit') .or. & 
-        (solver == 'continuation_convective_explicit') .or. (solver == 'continuation_convective_implicit')) .and. &
+        (solver == 'continuation_convective_explicit') .or. (solver == 'continuation_convective_implicit') .or. &
+        (solver == 'arnoldi_convective_explicit') .or. (solver == 'arnoldi_convective_implicit')) .and. &
         & (time_step == 'no')) then
         print*, 'No timestepping scheme selected, switching to Forward-Backward Euler'
         time_step = 'fbe'
     else if (((solver == 'newton_convective_explicit') .or. (solver == 'newton_convective_implicit') .or. & 
-        (solver == 'continuation_convective_explicit') .or. (solver == 'continuation_convective_implicit')) .and. &
+        (solver == 'continuation_convective_explicit') .or. (solver == 'continuation_convective_implicit') .or. &
+        (solver == 'arnoldi_convective_explicit') .or. (solver == 'arnoldi_convective_implicit')) .and. &
         & ((time_step == 'pc') .or. (time_step == 'bdf2'))) then
         print*, 'Predictor corrector or BDF2 timestep selected but Newton cannot work with them. ' // &
                 & 'Switching to Forward-Backward Euler'
@@ -335,9 +341,10 @@ subroutine check_arg_validity()
     end if
 
     if ((solver == "newton_convective_explicit") .or. (solver == "newton_convective_implicit") & 
-        & .or. (solver == "continuation_convective_explicit") .or. (solver == "continuation_convective_implicit")) then
+        & .or. (solver == "continuation_convective_explicit") .or. (solver == "continuation_convective_implicit") .or. &
+        (solver == 'arnoldi_convective_explicit') .or. (solver == 'arnoldi_convective_implicit')) then
         if ((init /= "no") .or. (init_amp /= 0.)) then
-            print*, "Newton solver should not have initial condition"
+            print*, "Newton or Arnoldi solvers should not have initial condition"
             stop
         end if
 
@@ -438,16 +445,19 @@ subroutine check_arg_validity()
         & .or. (solver == "continuation_convective_explicit") .or. (solver == "continuation_convective_implicit")) &
         & .and. (NTS /= 0)) then
         print*, "Newton solver selected, NTS is of no use"
-    else if (((solver == "convective_explicit") .or. (solver == "convective_implicit")) &
+    else if (((solver == "convective_explicit") .or. (solver == "convective_implicit") .or. &
+        (solver == 'arnoldi_convective_explicit') .or. (solver == 'arnoldi_convective_implicit')) &
         & .and. (NTS <= 0)) then
         print *, "Simulation stopped - NTS has an invalid value"
         stop
-    else if ((solver == "convective_explicit") .or. (solver == "convective_implicit")) then
+    else if ((solver == "convective_explicit") .or. (solver == "convective_implicit") .or. &
+        (solver == 'arnoldi_convective_explicit') .or. (solver == 'arnoldi_convective_implicit')) then
         print*, "Number of iterations = ", NTS
     end if
 
     if (((solver == "newton_convective_explicit") .or. (solver == "newton_convective_implicit") & 
-        & .or. (solver == "continuation_convective_explicit") .or. (solver == "continuation_convective_implicit")) &
+        & .or. (solver == "continuation_convective_explicit") .or. (solver == "continuation_convective_implicit") .or. &
+        (solver == 'arnoldi_convective_explicit') .or. (solver == 'arnoldi_convective_implicit')) &
         & .and. (save_every /= 0)) then
         print*, "Newton solver selected, save_every is of no use"
     else if (((solver == "convective_explicit") .or. (solver == "convective_implicit")) &
@@ -489,7 +499,8 @@ subroutine check_arg_validity()
         print*, "The resolution of the Fourier transform is ", mres
     end if
 
-    if (((solver == "convective_explicit") .or. (solver == "convective_implicit")) .and. &
+    if (((solver == "convective_explicit") .or. (solver == "convective_implicit") .or. &
+        (solver == 'arnoldi_convective_explicit') .or. (solver == 'arnoldi_convective_implicit')) .and. &
         & ((max_newt /= 0) .or. (max_gmres /= 0) .or. (restart_gmres /= 0) .or. (newt_eps /= 0) & 
         & .or. (newt_delta /= 0) .or. (tol_gmres /= 0) .or. (M_wave /= 0))) then
         print*, "Newton solver not selected, values of max_newt, max_gmres, restart_gmres, newt_eps, " // &
@@ -655,7 +666,8 @@ subroutine check_arg_validity()
 
     if (((solver == "convective_explicit") .or. (solver == "convective_implicit").or. &
         & (solver == "newton_convective_explicit") .or. (solver == "newton_convective_implicit") &
-        & .or. (solver == "continuation_convective_explicit") .or. (solver == "continuation_convective_implicit")) .and. &
+        & .or. (solver == "continuation_convective_explicit") .or. (solver == "continuation_convective_implicit") .or. &
+        (solver == 'arnoldi_convective_explicit') .or. (solver == 'arnoldi_convective_implicit')) .and. &
         & (Ro /= 0.)) then
         print*, "Convective solver selected, the Rossby number will not be used"
     else if ((solver == "mhd_explicit") .or. (solver == "mhd_implicit")) then

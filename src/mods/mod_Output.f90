@@ -201,6 +201,12 @@ subroutine writeRestart(step, Ra, Ek)
     write(11) F_tm1
     write(11) T_tm1
   end if
+  if ((solver == "newton_convective_explicit") .or. (solver == "newton_convective_implicit") & 
+        & .or. (solver == "continuation_convective_explicit") .or. (solver == "continuation_convective_implicit")) then
+    print*, "We're writing C_base", C_base
+    write(11) C_base
+  end if
+
   close(11)
 
 end subroutine writeRestart

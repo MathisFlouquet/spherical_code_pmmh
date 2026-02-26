@@ -50,31 +50,33 @@ subroutine convective_newton_solver()
 
     procedure(), pointer :: NonLinTimeStep_ptr, LinNonLinTimeStep_ptr
 
+    ! We begin by precomputing the matrices for the resolution of the linear system
+    call precompBuildXY() ! Compute building blocks for the matrices
+
     ! Check for solver type
     if (solver == "newton_convective_explicit") then
 
-        ! We begin by precomputing the matrices for the resolution of the linear system
-        call precompBuildXY() ! Compute building blocks for the matrices
+        select case (time_step)
+        
+            case("cn")
 
-        if (time_step == "cn") then
+                print*, "Precomputing the Xe and Ye matrices..."
+                call precompXeYe()
+                print*, "Precomputing the Xf and Yf matrices..."
+                call precompXfYf()
+                print*, "Precomputing the XT and YT matrices..."
+                call precompXTYT()
 
-            print*, "Precomputing the Xe and Ye matrices..."
-            call precompXeYe()
-            print*, "Precomputing the Xf and Yf matrices..."
-            call precompXfYf()
-            print*, "Precomputing the XT and YT matrices..."
-            call precompXTYT()
+            case ("fbe")
 
-        else if (time_step == "fbe") then
+                print*, "Precomputing the Xe and Ye matrices..."
+                call precompXeYe_BDF()
+                print*, "Precomputing the Xf and Yf matrices..."
+                call precompXfYf_BDF()
+                print*, "Precomputing the XT and YT matrices..."
+                call precompXTYT_BDF()
 
-            print*, "Precomputing the Xe and Ye matrices..."
-            call precompXeYe_BDF()
-            print*, "Precomputing the Xf and Yf matrices..."
-            call precompXfYf_BDF()
-            print*, "Precomputing the XT and YT matrices..."
-            call precompXTYT_BDF()
-
-        end if
+        end select
 
         ! Pointers for subroutines
         NonLinTimeStep_ptr => compute_time_step_convective_explicit_CN_FBE
@@ -83,30 +85,29 @@ subroutine convective_newton_solver()
 
     else if (solver == "newton_convective_implicit") then
 
-        ! We begin by precomputing the matrices for the resolution of the linear system
-        call precompBuildXY() ! Compute building blocks for the matrices
+        select case (time_step)
+            
+            case ("cn")
 
-        if (time_step == "cn") then
+                print*, "Precomputing the Xef and Yef matrices..."
+                call PrecompimplicitXY()
+                print*, "Precomputing the XT and YT matrices..."
+                call precompXTYT()
+                ! Pointers for subroutines
+                NonLinTimeStep_ptr => compute_time_step_convective_implicit_CN
+                LinNonLinTimeStep_ptr => compute_lin_time_step_convective_implicit_CN
 
-            print*, "Precomputing the Xef and Yef matrices..."
-            call PrecompimplicitXY()
-            print*, "Precomputing the XT and YT matrices..."
-            call precompXTYT()
-            ! Pointers for subroutines
-            NonLinTimeStep_ptr => compute_time_step_convective_implicit_CN
-            LinNonLinTimeStep_ptr => compute_lin_time_step_convective_implicit_CN
+            case ("fbe")
 
-        else if (time_step == "fbe") then
+                print*, "Precomputing the Xef, Ye and Yf matrices..."
+                call PrecompimplicitXY_BDF()
+                print*, "Precomputing the XT and YT matrices..."
+                call precompXTYT_BDF()
+                ! Pointers for subroutines
+                NonLinTimeStep_ptr => compute_time_step_convective_implicit_FBE
+                LinNonLinTimeStep_ptr => compute_lin_time_step_convective_implicit_FBE
 
-            print*, "Precomputing the Xef, Ye and Yf matrices..."
-            call PrecompimplicitXY_BDF()
-            print*, "Precomputing the XT and YT matrices..."
-            call precompXTYT_BDF()
-            ! Pointers for subroutines
-            NonLinTimeStep_ptr => compute_time_step_convective_implicit_FBE
-            LinNonLinTimeStep_ptr => compute_lin_time_step_convective_implicit_FBE
-
-        end if
+        end select
 
         ! Pointers for subroutine computing the RHS
         Implicit_RHS_ptr => comp_RHS_with_rot
@@ -133,9 +134,6 @@ subroutine convective_newton_solver()
     call c_f_pointer(c_loc(F_base), F_base_ptr, [2 * KK4 * shtns%nlm])
     call c_f_pointer(c_loc(T_base), T_base_ptr, [2 * KK2 * shtns%nlm])
 
-    ! Initialise wavespeed
-    C_base = 0.
-
     ! Now we call the Newton solver
     call newton_solver(NonLinTimeStep_ptr, LinNonLinTimeStep_ptr, C_base)
 
@@ -159,31 +157,33 @@ subroutine continuation_convective_solver()
 
     character(len=6) :: cont_type
 
+    ! We begin by precomputing the matrices for the resolution of the linear system
+    call precompBuildXY() ! Compute building blocks for the matrices
+
     ! Check for solver type
     if (solver == "continuation_convective_explicit") then
 
-        ! We begin by precomputing the matrices for the resolution of the linear system
-        call precompBuildXY() ! Compute building blocks for the matrices
+        select case (time_step)
+            
+            case ("cn")
 
-        if (time_step == "cn") then
+                print*, "Precomputing the Xe and Ye matrices..."
+                call precompXeYe()
+                print*, "Precomputing the Xf and Yf matrices..."
+                call precompXfYf()
+                print*, "Precomputing the XT and YT matrices..."
+                call precompXTYT()
 
-            print*, "Precomputing the Xe and Ye matrices..."
-            call precompXeYe()
-            print*, "Precomputing the Xf and Yf matrices..."
-            call precompXfYf()
-            print*, "Precomputing the XT and YT matrices..."
-            call precompXTYT()
+            case ("fbe")
 
-        else if (time_step == "fbe") then
+                print*, "Precomputing the Xe and Ye matrices..."
+                call precompXeYe_BDF()
+                print*, "Precomputing the Xf and Yf matrices..."
+                call precompXfYf_BDF()
+                print*, "Precomputing the XT and YT matrices..."
+                call precompXTYT_BDF()
 
-            print*, "Precomputing the Xe and Ye matrices..."
-            call precompXeYe_BDF()
-            print*, "Precomputing the Xf and Yf matrices..."
-            call precompXfYf_BDF()
-            print*, "Precomputing the XT and YT matrices..."
-            call precompXTYT_BDF()
-
-        end if
+        end select
 
         ! Pointers for subroutines
         NonLinTimeStep_ptr => compute_time_step_convective_explicit_CN_FBE
@@ -192,30 +192,29 @@ subroutine continuation_convective_solver()
 
     else if (solver == "continuation_convective_implicit") then
 
-        ! We begin by precomputing the matrices for the resolution of the linear system
-        call precompBuildXY() ! Compute building blocks for the matrices
+        select case (time_step)
 
-        if (time_step == "cn") then
+            case ("cn")
 
-            print*, "Precomputing the Xef and Yef matrices..."
-            call PrecompimplicitXY()
-            print*, "Precomputing the XT and YT matrices..."
-            call precompXTYT()
-            ! Pointers for subroutines
-            NonLinTimeStep_ptr => compute_time_step_convective_implicit_CN
-            LinNonLinTimeStep_ptr => compute_lin_time_step_convective_implicit_CN
+                print*, "Precomputing the Xef and Yef matrices..."
+                call PrecompimplicitXY()
+                print*, "Precomputing the XT and YT matrices..."
+                call precompXTYT()
+                ! Pointers for subroutines
+                NonLinTimeStep_ptr => compute_time_step_convective_implicit_CN
+                LinNonLinTimeStep_ptr => compute_lin_time_step_convective_implicit_CN
 
-        else if (time_step == "fbe") then
+            case ("fbe")
 
-            print*, "Precomputing the Xef, Ye and Yf matrices..."
-            call PrecompimplicitXY_BDF()
-            print*, "Precomputing the XT and YT matrices..."
-            call precompXTYT_BDF()
-            ! Pointers for subroutines
-            NonLinTimeStep_ptr => compute_time_step_convective_implicit_FBE
-            LinNonLinTimeStep_ptr => compute_lin_time_step_convective_implicit_FBE
+                print*, "Precomputing the Xef, Ye and Yf matrices..."
+                call PrecompimplicitXY_BDF()
+                print*, "Precomputing the XT and YT matrices..."
+                call precompXTYT_BDF()
+                ! Pointers for subroutines
+                NonLinTimeStep_ptr => compute_time_step_convective_implicit_FBE
+                LinNonLinTimeStep_ptr => compute_lin_time_step_convective_implicit_FBE
 
-        end if
+        end select
 
         ! Pointers for subroutine computing the RHS
         Implicit_RHS_ptr => comp_RHS_with_rot
@@ -278,9 +277,6 @@ subroutine continuation_convective_solver()
     
     ! Initialise dsmax
     dsmax = 0.
-
-    ! Initialise C_base
-    C_base = 0.
 
     ! Initialise count
     count = 0
@@ -806,7 +802,7 @@ subroutine newton_solver(NonLinTimeStep_ptr, LinNonLinTimeStep_ptr, C_base, newt
         ! Compute the norm of EFT_best (with c_per inside)
         norm_EFT_best = sqrt(EFT_best .dot. EFT_best)
 
-        ! Estract c_per from EFT_best
+        ! Extract c_per from EFT_best
         c_per = EFT_best(wavespeed_loc)
         EFT_best(wavespeed_loc) = 0.
 

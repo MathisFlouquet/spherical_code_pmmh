@@ -100,6 +100,9 @@ module mod_Globalvars
 
   !--- Arrays containing real velocity components and temperature
   double precision, dimension(:, :, :), allocatable :: Ur, Ut, Up, T_real
+  double precision, dimension(:, :, :), allocatable :: Ur_base, Ut_base, Up_base, T_real_base
+  double precision, dimension(:, :, :), allocatable :: cUr_base, cUt_base, cUp_base
+  double precision, dimension(:, :, :), allocatable :: gTr_base, gTt_base, gTp_base
 
   !--- Auxiliary arrays to compute U, curl(U) and grad(T)
   double complex, dimension(:, :), allocatable :: Qu, Su, Tu, Qcu, Scu, Tcu, Tr, St
@@ -140,7 +143,7 @@ module mod_Globalvars
   double precision, dimension(:), pointer :: E_base_ptr, F_base_ptr, T_base_ptr ! Pointers for E_base, F_base and T_base
   integer :: max_newt, max_gmres, restart_gmres, M_wave, wavespeed_loc
   double precision :: newt_eps, newt_delta, tol_gmres
-  double precision :: C_base, c_per
+  double precision :: C_base = 0., c_per = 0.
 
   !--- Continuation method
   double precision :: Ek_final = 0. ! Final value in Ekman continuation

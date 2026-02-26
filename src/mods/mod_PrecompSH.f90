@@ -134,7 +134,7 @@ subroutine PrecompSH()
     allocate(DTp(KK2, shtns%nlm))
 
     if ((solver == "convective_implicit") .or. (solver == "newton_convective_implicit") & 
-        & .or. (solver == "continuation_convective_implicit")) then
+        & .or. (solver == "continuation_convective_implicit") .or. (solver == "arnoldi_convective_implicit")) then
         allocate(DEr(KK2, shtns%nlm))
         allocate(DFr(KK4, shtns%nlm))
         allocate(DEpr(KK2, shtns%nlm))
@@ -149,18 +149,19 @@ subroutine PrecompSH()
         allocate(DE_tm2(KK2, shtns%nlm), DF_tm2(KK4, shtns%nlm), DT_tm2(KK2, shtns%nlm))
     end if
 
-    ! For the Newton solver
+    ! For the Newton or Arnoldi solvers
     if ((solver == "newton_convective_explicit") .or. (solver == "newton_convective_implicit") & 
-        & .or. (solver == "continuation_convective_explicit") .or. & 
-        & (solver == "continuation_convective_implicit")) then
-        allocate(E_base(KK2, shtns%nlm))
-        allocate(F_base(KK4, shtns%nlm))
-        allocate(T_base(KK2, shtns%nlm))
+        & .or. (solver == "continuation_convective_explicit") .or. (solver == "continuation_convective_implicit") & 
+        .or. (solver == "arnoldi_convective_explicit") .or. (solver == "arnoldi_convective_implicit")) then
+        allocate(E_base(KK2, shtns%nlm), F_base(KK4, shtns%nlm), T_base(KK2, shtns%nlm))
+        allocate(Ur_base(kN, lN, mN), Ut_base(kN, lN, mN), Up_base(kN, lN, mN), T_real_base(kN, lN, mN))
+        allocate(cUr_base(kN, lN, mN), cUt_base(kN, lN, mN), cUp_base(kN, lN, mN))
+        allocate(gTr_base(kN, lN, mN), gTt_base(kN, lN, mN), gTp_base(kN, lN, mN))
     end if
 
     ! For the solution of the linear system (explicit)
     if ((solver == "convective_explicit") .or. (solver == "newton_convective_explicit") & 
-        & .or. (solver == "continuation_convective_explicit")) then
+        & .or. (solver == "continuation_convective_explicit") .or. (solver == "arnoldi_convective_explicit")) then
         allocate(wE(KK2, shtns%nlm), wDE(KK2, shtns%nlm))
         allocate(wF(KK4, shtns%nlm), wDF(KK4, shtns%nlm))
     end if
@@ -168,7 +169,7 @@ subroutine PrecompSH()
 
     ! For the solution of the linear system (implicit)
     if ((solver == "convective_implicit") .or. (solver == "newton_convective_implicit") & 
-        & .or. (solver == "continuation_convective_implicit")) then
+        & .or. (solver == "continuation_convective_implicit") .or. (solver == "arnoldi_convective_implicit")) then
         size_A = 2 * (KK2 + KK4) * sum([(LL - (max(1, m) - 1), m=0, MM*mres, mres)])
         allocate(A(size_A, 1), Ap(size_A, 1), DA(size_A, 1))
         allocate(A1(2 * LL * (KK2 + KK4), 1), DA1(2 * LL * (KK2 + KK4), 1))
@@ -201,7 +202,7 @@ subroutine PrecompSH()
 
     ! Allocate matrices for solving time step
     if ((solver == "convective_explicit") .or. (solver == "newton_convective_explicit") & 
-        & .or. (solver == "continuation_convective_explicit")) then
+        & .or. (solver == "continuation_convective_explicit") .or. (solver == "arnoldi_convective_explicit")) then
         !--- Inverse matrix X⁻¹ and X⁻¹*Y for e
         allocate(Xe_inv(KK2, KK2, LL + 1), Xe_invYe(KK2, KK2, LL + 1))
         !--- Inverse matrix X⁻¹ and X⁻¹*Y for f
@@ -211,7 +212,7 @@ subroutine PrecompSH()
     end if
 
     if ((solver == "convective_implicit") .or. (solver == "newton_convective_implicit") & 
-        & .or. (solver == "continuation_convective_implicit")) then
+        & .or. (solver == "continuation_convective_implicit") .or. (solver == "arnoldi_convective_implicit")) then
         allocate(Xef(6 * (KK2 + KK4) - 2, size_A))
         allocate(PIVOT(size_A))
         if ((time_step == "pc") .or. (time_step == "cn")) then
@@ -226,7 +227,7 @@ subroutine PrecompSH()
 
     ! Allocation and computation of even and odd indexes for implicit Coriolis
     if ((solver == "convective_implicit") .or. (solver == "newton_convective_implicit") & 
-        & .or. (solver == "continuation_convective_implicit")) then
+        & .or. (solver == "continuation_convective_implicit") .or. (solver == "arnoldi_convective_implicit")) then
         allocate(idx_odd(sum([(((LL + mod(LL, 2)) + 1 - m) / 2, m=0, MM*mres, mres)])))
         allocate(idx_even(sum([(((LL + mod(LL, 2)) - max(m, 1)) / 2 + mod(LL + 1, 2), m=0, MM*mres, mres)])))
         i_even = 1
