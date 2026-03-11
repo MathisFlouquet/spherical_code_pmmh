@@ -68,6 +68,9 @@ subroutine readRestart()
   integer :: i, l, m, lm, lmp, lNp, mNp
   double complex, dimension(:, :), allocatable :: E_p, F_p, T_p
 
+  double precision :: a
+  integer :: b
+
   type(c_ptr) :: shtns_c_p
   type(shtns_info), pointer :: shtns_p
 
@@ -83,9 +86,26 @@ subroutine readRestart()
   read(11) F_p
   read(11) T_p
 
-  ! Attempt to read t0 and step_0 from timestepping simulation binary files because they could come from continuation.
-  read(11, IOSTAT=ios) t0
-  read(11, IOSTAT=ios) step_0
+  ! ! Attempt to read t0 and step_0 from timestepping simulation binary files because they could come from continuation.
+  ! read(11, IOSTAT=ios) t0
+  ! read(11, IOSTAT=ios) step_0 
+
+  read(11) a ! This can be t0 or C_base depending whether we come from timesepping or continuation
+  read(11, IOSTAT=ios) b ! This should be step_0 if we can read it
+  if(ios == 0) then
+    t0 = a
+    step_0 = b
+  else
+    C_base = a
+  end if
+
+  if ((solver == "convective_explicit") .or. (solver == "convective_implicit")) then
+    print*, "Starting simulation from time = ", t0, " and timestep = ", step_0
+  else if ((solver == "newton_convective_explicit") .or. (solver == "newton_convective_implicit") & 
+    & .or. (solver == "continuation_convective_explicit") .or. (solver == "continuation_convective_implicit") .or. &
+    (solver == 'arnoldi_convective_explicit') .or. (solver == 'arnoldi_convective_implicit')) then
+    print*, "State wavespeed = ", C_base
+  end if
 
   ! Attempt to read DE_tm1, DF_tm1, DT_tm1, E_tm1, F_tm1 and T_tm1 in case restart file comes from a timestepping simulation using BDF2
   read(11, IOSTAT=ios) DE_tm1_p
@@ -93,7 +113,7 @@ subroutine readRestart()
   read(11, IOSTAT=ios) DT_tm1_p
   read(11, IOSTAT=ios) E_tm1_p
   read(11, IOSTAT=ios) F_tm1_p
-  read(11, IOSTAT=ios) T_tm1_p
+  read(11, IOSTAT=ios) T_tm1_p 
 
   if ((time_step /= "bdf2") .or. ((ios /= 0) .and. time_step == "bdf2")) then
   
@@ -208,6 +228,11 @@ subroutine readRestart()
     deallocate(E_tm1_p, F_tm1_p, T_tm1_p)
     deallocate(DE_tm1_p, DF_tm1_p, DT_tm1_p)
   end if
+
+  ! Attempt to read C_base
+  ! read(11, IOSTAT=ios) C_base
+  ! if (ios == 0) print*, "This is C_base = ", C_base
+  ! print*, "ios = ", ios, "C_base = ", C_base
 
   print*, 'Allocation completed.'
 

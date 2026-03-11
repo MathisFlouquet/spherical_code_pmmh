@@ -47,13 +47,15 @@ subroutine act_on_RHS(time_stepping_sub, E_RHS, F_RHS, T_RHS)
     double precision, dimension(2 * KK4 * shtns%nlm), intent(out) :: F_RHS
     double precision, dimension(2 * KK2 * shtns%nlm), intent(out) :: T_RHS
 
+    ! Saving previous state
     E_base = E
     F_base = F
     T_base = T
 
+    ! Compute timestep with rotation, i.e. taking into account C_base
     call time_stepping_sub()
 
-    ! Compute F(U)
+    ! Compute F(U) - difference between two widely spaced timesteps
     E_RHS = E_ptr - E_base_ptr
     F_RHS = F_ptr - F_base_ptr
     T_RHS = T_ptr - T_base_ptr
