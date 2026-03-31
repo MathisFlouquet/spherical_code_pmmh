@@ -84,11 +84,7 @@ subroutine readRestart()
   open(unit=11, file=trim(directory)//"/"//trim(restart_filename), form="unformatted")
   read(11) E_p
   read(11) F_p
-  read(11) T_p
-
-  ! ! Attempt to read t0 and step_0 from timestepping simulation binary files because they could come from continuation.
-  ! read(11, IOSTAT=ios) t0
-  ! read(11, IOSTAT=ios) step_0 
+  read(11) T_p 
 
   read(11) a ! This can be t0 or C_base depending whether we come from timesepping or continuation
   read(11, IOSTAT=ios) b ! This should be step_0 if we can read it
@@ -228,11 +224,6 @@ subroutine readRestart()
     deallocate(E_tm1_p, F_tm1_p, T_tm1_p)
     deallocate(DE_tm1_p, DF_tm1_p, DT_tm1_p)
   end if
-
-  ! Attempt to read C_base
-  ! read(11, IOSTAT=ios) C_base
-  ! if (ios == 0) print*, "This is C_base = ", C_base
-  ! print*, "ios = ", ios, "C_base = ", C_base
 
   print*, 'Allocation completed.'
 
