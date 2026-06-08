@@ -26,7 +26,7 @@
 ! - compute_time_step_convective_implicit_CN: CN timestep using implicit Coriolis.
 ! - compute_time_step_convective_implicit_FBE: FBE timestep using implicit Coriolis.
 ! - compute_time_step_convective_implicit_BDF2: BDF2 timestep using implicit Coriolis.
-! - compute_lin_time_step_convective_explicit_CN_FBE: CN or FBD linearized timestep using explicit Coriolis.
+! - compute_lin_time_step_convective_explicit_CN_FBE: CN or FBE linearized timestep using explicit Coriolis.
 ! - compute_lin_time_step_convective_implicit_CN: CN linearized timestep using implicit Coriolis.
 ! - compute_lin_time_step_convective_implicit_FBE: FBD linearized timestep using explicit Coriolis. erreur ? c'est implicit plutot
 
@@ -36,6 +36,7 @@ module mod_TimeStep
   use mod_Matrices
   use mod_PrecompXY
   use mod_ExplicitTerms
+  use omp_lib
 
   implicit none
 
@@ -54,6 +55,7 @@ subroutine compute_time_step_convective_explicit_PC()
   !--- Predictor Step for E, F and T
 
   !--- For E
+    !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm = 2, shtns%nlm ! We begin from lm = 2 because we do not care about the m=l=0 mode
     do k = 1, KK2
       wE(k, lm)%re = Xe_invYe(:, k, ell(lm)) .dot. real(E(:, lm))
@@ -64,6 +66,7 @@ subroutine compute_time_step_convective_explicit_PC()
   end do
 
   !--- For F
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm = 2, shtns%nlm ! We begin from lm = 2 because we do not care about the m=l=0 mode
     do k=1, KK4
       wF(k, lm)%re = Xf_invYf(:, k, ell(lm)) .dot. real(F(:, lm))
@@ -72,8 +75,10 @@ subroutine compute_time_step_convective_explicit_PC()
       wDF(k, lm)%im = Xf_inv(:, k, ell(lm)) .dot. aimag(DF(:, lm))
     end do
   end do
+  !$OMP END PARALLEL DO
 
   !--- For the T
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm = 1, shtns%nlm 
     do k = 1, KK2
       wT(k, lm)%re = XT_invYT(:, k, ell(lm)) .dot. real(T(:, lm))
@@ -82,7 +87,7 @@ subroutine compute_time_step_convective_explicit_PC()
       wDT(k, lm)%im = XT_inv(:, k, ell(lm)) .dot. aimag(DT(:, lm))
     end do
   end do
-
+  !$OMP END PARALLEL DO
   !--- Predictor values of E, F and T. These are the \tilde{e}^{n+1}, \tilde{f}^{n+1} and \tilde{T}^{n+1}.
   E = wE + wDE
   F = wF + wDF
@@ -98,29 +103,32 @@ subroutine compute_time_step_convective_explicit_PC()
   !--- Corrector Step for E, F and T
 
   !--- For E
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm = 2, shtns%nlm ! We begin from lm = 2 because we do not care about the m=l=0 mode
     do k=1, KK2
       wDE(k, lm)%re = Xe_inv(:, k, ell(lm)) .dot. real(DE(:, lm))
       wDE(k, lm)%im = Xe_inv(:, k, ell(lm)) .dot. aimag(DE(:, lm))
     end do
   end do
-
+  !$OMP END PARALLEL DO
   !--- For F
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm = 2, shtns%nlm ! We begin from lm = 2 because we do not care about the m=l=0 mode
     do k = 1, KK4
       wDF(k, lm)%re = Xf_inv(:, k, ell(lm)) .dot. real(DF(:, lm))
       wDF(k, lm)%im = Xf_inv(:, k, ell(lm)) .dot. aimag(DF(:, lm))
     end do
   end do
-
+  !$OMP END PARALLEL DO
   !--- For T
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm = 1, shtns%nlm 
     do k = 1, KK2
       wDT(k, lm)%re = XT_inv(:, k, ell(lm)) .dot. real(DT(:, lm))
       wDT(k, lm)%im = XT_inv(:, k, ell(lm)) .dot. aimag(DT(:, lm))
     end do
   end do
-
+  !$OMP END PARALLEL DO
   !--- Corrector values of E, F and T
   E = wE + wDE
   F = wF + wDF
@@ -143,20 +151,22 @@ subroutine compute_time_step_convective_implicit_PC()
   DFr = (0., 0.)
 
   ! Now we go to real in Chebyshev for DE and DF
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm=2, shtns%nlm ! We start from lm = 2 because lm = 1 is of no interest
     do k = 1, KK2
       DEr(k, lm)%re = Chb2(k, :KK2) .dot. real(DE(:KK2, lm))
       DEr(k, lm)%im = Chb2(k, :KK2) .dot. aimag(DE(:KK2, lm))
     end do
   end do
-
+  !$OMP END PARALLEL DO
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm=2, shtns%nlm
     do k = 1, KK4
       DFr(k, lm)%re = Chb4(k, :KK4) .dot. real(DF(:KK4, lm))
       DFr(k, lm)%im = Chb4(k, :KK4) .dot. aimag(DF(:KK4, lm))
     end do
   end do
-
+  !$OMP END PARALLEL DO
   ! Create arrays that respect the symmetry classes
   call small2big(E, F, A)
   call small2big(DEr, DFr, DA)
@@ -179,6 +189,7 @@ subroutine compute_time_step_convective_implicit_PC()
   end do
 
   !--- For T
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm = 1, shtns%nlm 
     do k = 1, KK2
       wT(k, lm)%re = XT_invYT(:, k, ell(lm)) .dot. real(T(:, lm))
@@ -187,7 +198,7 @@ subroutine compute_time_step_convective_implicit_PC()
       wDT(k, lm)%im = XT_inv(:, k, ell(lm)) .dot. aimag(DT(:, lm))
     end do
   end do
-
+  !$OMP END PARALLEL DO
   !--- Predictor values of E, F and Temerature. These are the \tilde{e}^{n+1}, \tilde{f}^{n+1} and \tilde{T}^{n+1}.
   call big2small(Ap, E, F)
   T = wT + wDT
@@ -199,20 +210,22 @@ subroutine compute_time_step_convective_implicit_PC()
   DFpr = (0., 0.)
 
   ! Now we go to real in Chebyshev for DEp and DFp
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm=2, shtns%nlm
     do k = 1, KK2
       DEpr(k, lm)%re = Chb2(k, :KK2) .dot. real(DEp(:KK2, lm))
       DEpr(k, lm)%im = Chb2(k, :KK2) .dot. aimag(DEp(:KK2, lm))
     end do
   end do
-
+  !$OMP END PARALLEL DO
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm=2, shtns%nlm
     do k = 1, KK4
       DFpr(k, lm)%re = Chb4(k, :KK4) .dot. real(DFp(:KK4, lm))
       DFpr(k, lm)%im = Chb4(k, :KK4) .dot. aimag(DFp(:KK4, lm))
     end do
   end do
-
+  !$OMP END PARALLEL DO
   DEr = (DEr + DEpr) / 2.
   DFr = (DFr + DFpr) / 2.
   DT = (DT + DTp) / 2.
@@ -236,13 +249,14 @@ subroutine compute_time_step_convective_implicit_PC()
   end do
 
   !--- For T
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm = 1, shtns%nlm 
     do k = 1, KK2
       wDT(k, lm)%re = XT_inv(:, k, ell(lm)) .dot. real(DT(:, lm))
       wDT(k, lm)%im = XT_inv(:, k, ell(lm)) .dot. aimag(DT(:, lm))
     end do
   end do
-
+  !$OMP END PARALLEL DO
   !--- Corrector values of E, F and T
   call big2small(A, E, F)
   T = wT + wDT
@@ -263,6 +277,7 @@ subroutine compute_time_step_convective_explicit_CN_FBE()
   !--- Solution of the linear system
 
   !--- For E
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm = 2, shtns%nlm ! We begin from lm = 2 because we do not care about the m=l=0 mode
     do k = 1, KK2
       wE(k, lm)%re = Xe_invYe(:, k, ell(lm)) .dot. real(E(:, lm))
@@ -271,8 +286,9 @@ subroutine compute_time_step_convective_explicit_CN_FBE()
       wDE(k, lm)%im = Xe_inv(:, k, ell(lm)) .dot. aimag(DE(:, lm))
     end do
   end do
-
+  !$OMP END PARALLEL DO
   !--- For F
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm = 2, shtns%nlm ! We begin from lm = 2 because we do not care about the m=l=0 mode
     do k=1, KK4
       wF(k, lm)%re = Xf_invYf(:, k, ell(lm)) .dot. real(F(:, lm))
@@ -281,8 +297,9 @@ subroutine compute_time_step_convective_explicit_CN_FBE()
       wDF(k, lm)%im = Xf_inv(:, k, ell(lm)) .dot. aimag(DF(:, lm))
     end do
   end do
-
+  !$OMP END PARALLEL DO
   !--- For T
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm = 1, shtns%nlm 
     do k = 1, KK2
       wT(k, lm)%re = XT_invYT(:, k, ell(lm)) .dot. real(T(:, lm))
@@ -291,7 +308,7 @@ subroutine compute_time_step_convective_explicit_CN_FBE()
       wDT(k, lm)%im = XT_inv(:, k, ell(lm)) .dot. aimag(DT(:, lm))
     end do
   end do
-
+  !$OMP END PARALLEL DO
   !--- New values of E, F and T
   E = wE + wDE
   F = wF + wDF
@@ -330,6 +347,7 @@ subroutine compute_time_step_convective_explicit_BDF2()
   DT(:KK, :) = 2. / 3. * (2. * DT_tm1(:KK, :) - DT_tm2(:KK, :))
 
   !--- For E
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm = 2, shtns%nlm ! We begin from lm = 2 because we do not care about the m=l=0 mode
     do k = 1, KK2
       wE(k, lm)%re = Xe_invYe(:, k, ell(lm)) .dot. real(E(:, lm))
@@ -338,8 +356,9 @@ subroutine compute_time_step_convective_explicit_BDF2()
       wDE(k, lm)%im = Xe_inv(:, k, ell(lm)) .dot. aimag(DE(:, lm))
     end do
   end do
-
+  !$OMP END PARALLEL DO
   !--- For F
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm = 2, shtns%nlm ! We begin from lm = 2 because we do not care about the m=l=0 mode
     do k=1, KK4
       wF(k, lm)%re = Xf_invYf(:, k, ell(lm)) .dot. real(F(:, lm))
@@ -348,8 +367,9 @@ subroutine compute_time_step_convective_explicit_BDF2()
       wDF(k, lm)%im = Xf_inv(:, k, ell(lm)) .dot. aimag(DF(:, lm))
     end do
   end do
-
+  !$OMP END PARALLEL DO
   !--- For T
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm = 1, shtns%nlm 
     do k = 1, KK2
       wT(k, lm)%re = XT_invYT(:, k, ell(lm)) .dot. real(T(:, lm))
@@ -358,7 +378,7 @@ subroutine compute_time_step_convective_explicit_BDF2()
       wDT(k, lm)%im = XT_inv(:, k, ell(lm)) .dot. aimag(DT(:, lm))
     end do
   end do
-
+  !$OMP END PARALLEL DO
   !--- New values of E, F and T
   E = wE + wDE
   F = wF + wDF
@@ -381,20 +401,22 @@ subroutine compute_time_step_convective_implicit_CN()
   DFr = (0., 0.)
 
   ! Now we go to real in Chebyshev for DE and DF
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm=2, shtns%nlm ! We start from lm = 2 because lm = 1 is of no interest
     do k = 1, KK2
       DEr(k, lm)%re = Chb2(k, :KK2) .dot. real(DE(:KK2, lm))
       DEr(k, lm)%im = Chb2(k, :KK2) .dot. aimag(DE(:KK2, lm))
     end do
   end do
-
+  !$OMP END PARALLEL DO
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm=2, shtns%nlm
     do k = 1, KK4
       DFr(k, lm)%re = Chb4(k, :KK4) .dot. real(DF(:KK4, lm))
       DFr(k, lm)%im = Chb4(k, :KK4) .dot. aimag(DF(:KK4, lm))
     end do
   end do
-
+  !$OMP END PARALLEL DO
   ! Create arrays that respect the symmetry classes
   call small2big(E, F, A)
   call small2big(DEr, DFr, DA)
@@ -417,6 +439,7 @@ subroutine compute_time_step_convective_implicit_CN()
   end do
 
   !--- For T
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm = 1, shtns%nlm 
     do k = 1, KK2
       wT(k, lm)%re = XT_invYT(:, k, ell(lm)) .dot. real(T(:, lm))
@@ -425,7 +448,7 @@ subroutine compute_time_step_convective_implicit_CN()
       wDT(k, lm)%im = XT_inv(:, k, ell(lm)) .dot. aimag(DT(:, lm))
     end do
   end do
-
+  !$OMP END PARALLEL DO
   !--- New values of E, F and T
   call big2small(Ap, E, F)
   T = wT + wDT
@@ -447,20 +470,22 @@ subroutine compute_time_step_convective_implicit_FBE()
   DFr = (0., 0.)
 
   ! Now we go to real in Chebyshev for DE and DF
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm=2, shtns%nlm ! We start from lm = 2 because lm = 1 is of no interest
     do k = 1, KK2
       DEr(k, lm)%re = (Chb2(k, :KK2) .dot. real(DE(:KK2, lm))) + (Ye_mat(k, :, ell(lm)) .dot. real(E(:, lm)))
       DEr(k, lm)%im = (Chb2(k, :KK2) .dot. aimag(DE(:KK2, lm))) + (Ye_mat(k, :, ell(lm)) .dot. aimag(E(:, lm)))
     end do
   end do
-
+  !$OMP END PARALLEL DO
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm=2, shtns%nlm
     do k = 1, KK4
       DFr(k, lm)%re = (Chb4(k, :KK4) .dot. real(DF(:KK4, lm))) + (Yf_mat(k, :, ell(lm)) .dot. real(F(:, lm)))
       DFr(k, lm)%im = (Chb4(k, :KK4) .dot. aimag(DF(:KK4, lm))) + (Yf_mat(k, :, ell(lm)) .dot. aimag(F(:, lm)))
     end do
   end do
-
+  !$OMP END PARALLEL DO
   ! Create arrays that respect the symmetry classes
   call small2big(DEr, DFr, DA)
 
@@ -481,6 +506,7 @@ subroutine compute_time_step_convective_implicit_FBE()
   end do
 
   !--- For T
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm = 1, shtns%nlm 
     do k = 1, KK2
       wT(k, lm)%re = XT_invYT(:, k, ell(lm)) .dot. real(T(:, lm))
@@ -489,7 +515,7 @@ subroutine compute_time_step_convective_implicit_FBE()
       wDT(k, lm)%im = XT_inv(:, k, ell(lm)) .dot. aimag(DT(:, lm))
     end do
   end do
-
+  !$OMP END PARALLEL DO
   !--- New values of E, F and T
   call big2small(Ap, E, F)
   T = wT + wDT
@@ -528,20 +554,22 @@ subroutine compute_time_step_convective_implicit_BDF2()
   DFr = (0., 0.)
 
   ! Now we go to real in Chebyshev for DE and DF
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm=2, shtns%nlm ! We start from lm = 2 because lm = 1 is of no interest
     do k = 1, KK2
       DEr(k, lm)%re = (Chb2(k, :KK2) .dot. real(DE(:KK2, lm))) + (Ye_mat(k, :, ell(lm)) .dot. real(E(:, lm)))
       DEr(k, lm)%im = (Chb2(k, :KK2) .dot. aimag(DE(:KK2, lm))) + (Ye_mat(k, :, ell(lm)) .dot. aimag(E(:, lm)))
     end do
   end do
-
+  !$OMP END PARALLEL DO
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm=2, shtns%nlm
     do k = 1, KK4
       DFr(k, lm)%re = (Chb4(k, :KK4) .dot. real(DF(:KK4, lm))) + (Yf_mat(k, :, ell(lm)) .dot. real(F(:, lm)))
       DFr(k, lm)%im = (Chb4(k, :KK4) .dot. aimag(DF(:KK4, lm))) + (Yf_mat(k, :, ell(lm)) .dot. aimag(F(:, lm)))
     end do
   end do
-
+  !$OMP END PARALLEL DO
   ! Create arrays that respect the symmetry classes
   call small2big(DEr, DFr, DA)
 
@@ -562,6 +590,7 @@ subroutine compute_time_step_convective_implicit_BDF2()
   end do
 
   !--- For T
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm = 1, shtns%nlm 
     do k = 1, KK2
       wT(k, lm)%re = XT_invYT(:, k, ell(lm)) .dot. real(T(:, lm))
@@ -570,7 +599,7 @@ subroutine compute_time_step_convective_implicit_BDF2()
       wDT(k, lm)%im = XT_inv(:, k, ell(lm)) .dot. aimag(DT(:, lm))
     end do
   end do
-
+  !$OMP END PARALLEL DO
   !--- New values of E, F and T
   call big2small(Ap, E, F)
   T = wT + wDT
@@ -595,6 +624,7 @@ subroutine compute_lin_time_step_convective_explicit_CN_FBE(E_per, F_per, T_per)
   ! Solution of the linear system
 
   !--- For E
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm = 2, shtns%nlm ! We begin from lm = 2 because we do not care about the m=l=0 mode
     do k = 1, KK2
       wE(k, lm)%re = Xe_invYe(:, k, ell(lm)) .dot. real(E_per(:, lm))
@@ -603,8 +633,9 @@ subroutine compute_lin_time_step_convective_explicit_CN_FBE(E_per, F_per, T_per)
       wDE(k, lm)%im = Xe_inv(:, k, ell(lm)) .dot. aimag(DE(:, lm))
     end do
   end do
-
+  !$OMP END PARALLEL DO
   !--- For F
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm = 2, shtns%nlm ! We begin from lm = 2 because we do not care about the m=l=0 mode
     do k=1, KK4
       wF(k, lm)%re = Xf_invYf(:, k, ell(lm)) .dot. real(F_per(:, lm))
@@ -613,8 +644,9 @@ subroutine compute_lin_time_step_convective_explicit_CN_FBE(E_per, F_per, T_per)
       wDF(k, lm)%im = Xf_inv(:, k, ell(lm)) .dot. aimag(DF(:, lm))
     end do
   end do
-
+  !$OMP END PARALLEL DO
   !--- For T
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm = 1, shtns%nlm 
     do k = 1, KK2
       wT(k, lm)%re = XT_invYT(:, k, ell(lm)) .dot. real(T_per(:, lm))
@@ -623,7 +655,7 @@ subroutine compute_lin_time_step_convective_explicit_CN_FBE(E_per, F_per, T_per)
       wDT(k, lm)%im = XT_inv(:, k, ell(lm)) .dot. aimag(DT(:, lm))
     end do
   end do
-
+  !$OMP END PARALLEL DO
   !--- New values of E, F and T
   E_per = wE + wDE
   F_per = wF + wDF
@@ -650,20 +682,22 @@ subroutine compute_lin_time_step_convective_implicit_CN(E_per, F_per, T_per)
   DFr = (0., 0.)
 
   ! Now we go to real in Chebyshev for DE and DF
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm=2, shtns%nlm ! We start from lm = 2 because lm = 1 is of no interest
     do k = 1, KK2
       DEr(k, lm)%re = Chb2(k, :KK2) .dot. real(DE(:KK2, lm))
       DEr(k, lm)%im = Chb2(k, :KK2) .dot. aimag(DE(:KK2, lm))
     end do
   end do
-
+  !$OMP END PARALLEL DO 
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm=2, shtns%nlm
     do k = 1, KK4
       DFr(k, lm)%re = Chb4(k, :KK4) .dot. real(DF(:KK4, lm))
       DFr(k, lm)%im = Chb4(k, :KK4) .dot. aimag(DF(:KK4, lm))
     end do
   end do
-
+  !$OMP END PARALLEL DO
   ! Create arrays that respect the symmetry classes
   call small2big(E_per, F_per, A)
   call small2big(DEr, DFr, DA)
@@ -686,6 +720,7 @@ subroutine compute_lin_time_step_convective_implicit_CN(E_per, F_per, T_per)
   end do
 
   !--- For T
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm = 1, shtns%nlm 
     do k = 1, KK2
       wT(k, lm)%re = XT_invYT(:, k, ell(lm)) .dot. real(T_per(:, lm))
@@ -694,7 +729,7 @@ subroutine compute_lin_time_step_convective_implicit_CN(E_per, F_per, T_per)
       wDT(k, lm)%im = XT_inv(:, k, ell(lm)) .dot. aimag(DT(:, lm))
     end do
   end do
-
+  !$OMP END PARALLEL DO
   !--- New values of E, F and T
   call big2small(Ap, E_per, F_per)
   T_per = wT + wDT
@@ -720,20 +755,22 @@ subroutine compute_lin_time_step_convective_implicit_FBE(E_per, F_per, T_per)
   DFr = (0., 0.)
 
   ! Now we go to real in Chebyshev for DE and DF
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm=2, shtns%nlm ! We start from lm = 2 because lm = 1 is of no interest
     do k = 1, KK2
       DEr(k, lm)%re = (Chb2(k, :KK2) .dot. real(DE(:KK2, lm))) + (Ye_mat(k, :, ell(lm)) .dot. real(E_per(:, lm)))
       DEr(k, lm)%im = (Chb2(k, :KK2) .dot. aimag(DE(:KK2, lm))) + (Ye_mat(k, :, ell(lm)) .dot. aimag(E_per(:, lm)))
     end do
   end do
-
+  !$OMP END PARALLEL DO
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm=2, shtns%nlm
     do k = 1, KK4
       DFr(k, lm)%re = (Chb4(k, :KK4) .dot. real(DF(:KK4, lm))) + (Yf_mat(k, :, ell(lm)) .dot. real(F_per(:, lm)))
       DFr(k, lm)%im = (Chb4(k, :KK4) .dot. aimag(DF(:KK4, lm))) + (Yf_mat(k, :, ell(lm)) .dot. aimag(F_per(:, lm)))
     end do
   end do
-
+  !$OMP END PARALLEL DO
   ! Create arrays that respect the symmetry classes
   call small2big(DEr, DFr, DA)
 
@@ -754,6 +791,7 @@ subroutine compute_lin_time_step_convective_implicit_FBE(E_per, F_per, T_per)
   end do
 
   !--- For T
+  !$OMP PARALLEL DO COLLAPSE(2) SCHEDULE(STATIC) PRIVATE(k, lm)
   do lm = 1, shtns%nlm 
     do k = 1, KK2
       wT(k, lm)%re = XT_invYT(:, k, ell(lm)) .dot. real(T_per(:, lm))
@@ -762,7 +800,7 @@ subroutine compute_lin_time_step_convective_implicit_FBE(E_per, F_per, T_per)
       wDT(k, lm)%im = XT_inv(:, k, ell(lm)) .dot. aimag(DT(:, lm))
     end do
   end do
-
+  !$OMP END PARALLEL DO
   !--- New values of E, F and T
   call big2small(Ap, E_per, F_per)
   T_per = wT + wDT

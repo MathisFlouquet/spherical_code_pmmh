@@ -16,7 +16,7 @@ endif()
 if(CMAKE_Fortran_COMPILER_ID MATCHES "GNU")
     message(STATUS "Using GNU Fortran compiler")
     set(CMAKE_Fortran_FLAGS_DEBUG    "-O0 -fdefault-real-8 -fdefault-double-8 -g -fcheck=all -fbacktrace")
-    set(CMAKE_Fortran_FLAGS_RELEASE  "-O3 -fdefault-real-8 -fdefault-double-8")
+    set(CMAKE_Fortran_FLAGS_RELEASE  "-O3 -fdefault-real-8 -fdefault-double-8 -pg")
 
 elseif(CMAKE_Fortran_COMPILER_ID MATCHES "Intel")
     message(STATUS "Using Intel Fortran compiler")
@@ -29,7 +29,7 @@ elseif(CMAKE_Fortran_COMPILER_ID MATCHES "NVHPC")
     set(CMAKE_Fortran_FLAGS_RELEASE "-O3 -r8")
 
 endif()
-
+find_package(OpenMP REQUIRED)
 # --- MKL / BLAS / LAPACK selection ---
 
 # User override to disable MKL
@@ -169,6 +169,7 @@ if(HAVE_MKL)
         ${SHTNS_LIB}
         ${FFTW_LIB}
         ${ARPACK_LIB}
+        OpenMP::OpenMP_Fortran 
         m
         c
     )
@@ -180,6 +181,7 @@ else()
         ${SHTNS_LIB}
         ${FFTW_LIB}
         ${ARPACK_LIB}
+        OpenMP::OpenMP_Fortran 
         m
         c
     )

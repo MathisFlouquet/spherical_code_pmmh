@@ -152,7 +152,8 @@ subroutine PrecompSH()
     ! For the Newton or Arnoldi solvers
     if ((solver == "newton_convective_explicit") .or. (solver == "newton_convective_implicit") & 
         & .or. (solver == "continuation_convective_explicit") .or. (solver == "continuation_convective_implicit") & 
-        .or. (solver == "arnoldi_convective_explicit") .or. (solver == "arnoldi_convective_implicit")) then
+        & .or. (solver == "arnoldi_convective_explicit") .or. (solver == "arnoldi_convective_implicit") &
+        & .or. (solver =="convective_explicit") .or. (solver=="convective_implicit")) then
         allocate(E_base(KK2, shtns%nlm), F_base(KK4, shtns%nlm), T_base(KK2, shtns%nlm))
         allocate(Ur_base(kN, lN, mN), Ut_base(kN, lN, mN), Up_base(kN, lN, mN), T_real_base(kN, lN, mN))
         allocate(cUr_base(kN, lN, mN), cUt_base(kN, lN, mN), cUp_base(kN, lN, mN))
@@ -161,7 +162,8 @@ subroutine PrecompSH()
 
     ! For the solution of the linear system (explicit)
     if ((solver == "convective_explicit") .or. (solver == "newton_convective_explicit") & 
-        & .or. (solver == "continuation_convective_explicit") .or. (solver == "arnoldi_convective_explicit")) then
+        & .or. (solver == "continuation_convective_explicit") .or. (solver == "arnoldi_convective_explicit") &
+        & .or. (solver=="convective_explicit")) then
         allocate(wE(KK2, shtns%nlm), wDE(KK2, shtns%nlm))
         allocate(wF(KK4, shtns%nlm), wDF(KK4, shtns%nlm))
     end if
@@ -169,7 +171,8 @@ subroutine PrecompSH()
 
     ! For the solution of the linear system (implicit)
     if ((solver == "convective_implicit") .or. (solver == "newton_convective_implicit") & 
-        & .or. (solver == "continuation_convective_implicit") .or. (solver == "arnoldi_convective_implicit")) then
+        & .or. (solver == "continuation_convective_implicit") .or. (solver == "arnoldi_convective_implicit") &
+        & .or. (solver=="convective_implicit")) then
         size_A = 2 * (KK2 + KK4) * sum([(LL - (max(1, m) - 1), m=0, MM*mres, mres)])
         allocate(A(size_A, 1), Ap(size_A, 1), DA(size_A, 1))
         allocate(A1(2 * LL * (KK2 + KK4), 1), DA1(2 * LL * (KK2 + KK4), 1))

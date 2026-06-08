@@ -43,6 +43,8 @@ module mod_ExplicitTerms
   use mod_Matrices
   use mod_PrecompSH
   use mod_Tchebyshev
+  use omp_lib
+
 
   implicit none
 
@@ -91,6 +93,7 @@ subroutine comp_ExplicitRHS(DE, DF, DT)
   ! Note 2: As in comp_U, comp_curlU and comp_gradT the theta and phi
   !       components are multiplied by sin(theta) we need to take care of
   !       this when we compute the forcing terms
+  !$OMP PARALLEL DO COLLAPSE(3) SCHEDULE(STATIC) PRIVATE(k, l, m)
   do m=1, mN
     do k = 1, kN
       do l = 1, lN
@@ -106,6 +109,7 @@ subroutine comp_ExplicitRHS(DE, DF, DT)
       end do
     end do
   end do
+  !$OMP END PARALLEL DO
 
   !--- Going back to spectral space
   call BackToSpectral(Fr, Fr_spec, KK)    
@@ -177,9 +181,10 @@ subroutine comp_ImplicitRHS(DE, DF, DT)
   call comp_radial_derivatives(E, F, T, Qu, Su, Tu, Qcu, Scu, Tcu, Tr, St)
   call comp_U_cU_gT(Ur, Ut, Up, cUr, cUt, cUp, gTr, gTt, gTp)
   call ToReal(T, T_real, KK2)
+  !$OMP PARALLEL DO COLLAPSE(3) SCHEDULE(STATIC) PRIVATE(k, l, m)
   do m=1, mN
-    do k = 1, kN
-      do l = 1, lN
+    do l = 1, lN
+      do k = 1, kN
         Fr(k,l,m) = Ek * (CUp(k,l,m)*Ut(k,l,m) - CUt(k,l,m)*Up(k,l,m)) &
                   & + Ra * T_real(k,l,m) / (Rout*rN(k)**(-1))
         Gt(k,l,m) = Ek * (CUr(k,l,m)*Up(k,l,m) - CUp(k,l,m)*Ur(k,l,m)) / SinTh(l) ! Here we compute Gt = Ft / sin(theta)
@@ -189,6 +194,7 @@ subroutine comp_ImplicitRHS(DE, DF, DT)
       end do
     end do
   end do
+  !$OMP END PARALLEL DO
   !--- Going back to spectral space
   call BackToSpectral(Fr, Fr_spec, KK)    
   call BackToSpectral(Gt, Gt_spec, KK)
@@ -278,6 +284,7 @@ subroutine comp_RHS_with_rot(DE, DF, DT)
   !       this when we compute the forcing terms
 
 if ((solver == 'newton_convective_implicit') .or. (solver == 'continuation_convective_implicit')) then
+    !$OMP PARALLEL DO COLLAPSE(3) SCHEDULE(STATIC) PRIVATE(k, l, m)
     do m=1, mN
       do l = 1, lN
         do k = 1, kN
@@ -290,7 +297,9 @@ if ((solver == 'newton_convective_implicit') .or. (solver == 'continuation_conve
         end do
       end do
     end do
+    !$OMP END PARALLEL DO
   else
+    !$OMP PARALLEL DO COLLAPSE(3) SCHEDULE(STATIC) PRIVATE(k, l, m)
     do m=1, mN
       do l = 1, lN
         do k = 1, kN
@@ -306,6 +315,7 @@ if ((solver == 'newton_convective_implicit') .or. (solver == 'continuation_conve
         end do
       end do
     end do
+    !$OMP END PARALLEL DO
   end if
 
   !--- Going back to spectral space
@@ -396,7 +406,8 @@ subroutine comp_LinNonLin(E_base, F_base, T_base, E_per, F_per, T_per, DE, DF, D
   !--- Differentiating by phi and multiplying by C_base
   call comp_cdphi(C_base, E_per, F_per, T_per, E_per_rot, F_per_rot, T_per_rot)
 
-  if ((solver /= 'arnoldi_convective_implicit') .or. (solver /= 'arnoldi_convective_implicit')) then
+! Testing, on commente ça et on reprend les deux dernières lignes seulement
+  if ((solver /= 'arnoldi_convective_explicit') .and. (solver /= 'arnoldi_convective_implicit')) then
     
     call comp_cdphi(c_per, E_base, F_base, T_base, E_base_rot, F_base_rot, T_base_rot)
     call comp_U_from_EF(E_base_rot + E_per_rot, F_base_rot + F_per_rot, Ur_rot, Ut_rot, Up_rot)
@@ -408,6 +419,9 @@ subroutine comp_LinNonLin(E_base, F_base, T_base, E_per, F_per, T_per, DE, DF, D
     call ToReal(T_per_rot, T_real_rot, KK2)
 
   end if
+
+!  call comp_U_from_EF(E_per_rot, F_per_rot, Ur_rot, Ut_rot, Up_rot)
+!  call ToReal(T_per_rot, T_real_rot, KK2)
   
   !------
 
@@ -420,7 +434,12 @@ subroutine comp_LinNonLin(E_base, F_base, T_base, E_per, F_per, T_per, DE, DF, D
   !       components are multiplied by sin(theta) we need to take care of
   !       this when we compute the forcing terms
 
-if ((solver == 'newton_convective_implicit') .or. (solver == 'continuation_convective_implicit')) then
+!Testing on commente tout, hardcode l'intégration linéaire
+! J'observe que ya pas de cas arnoldi, donc celui ci était toujours traité en explicit, à voir
+! pas sur que cela change quelque chose les différences sur Coriolis se font à haute rotation je crois
+if ((solver == 'newton_convective_implicit') .or. (solver == 'continuation_convective_implicit') &
+  & .or. (solver == 'arnoldi_convective_implicit' )) then
+    !$OMP PARALLEL DO COLLAPSE(3) SCHEDULE(STATIC) PRIVATE(k, l, m)
     do m=1, mN
       do l = 1, lN
         do k = 1, kN
@@ -441,7 +460,9 @@ if ((solver == 'newton_convective_implicit') .or. (solver == 'continuation_conve
         end do
       end do
     end do
+    !$OMP END PARALLEL DO
   else
+    !$OMP PARALLEL DO COLLAPSE(3) SCHEDULE(STATIC) PRIVATE(k, l, m)
     do m=1, mN
       do l = 1, lN
         do k = 1, kN
@@ -465,7 +486,33 @@ if ((solver == 'newton_convective_implicit') .or. (solver == 'continuation_conve
         end do
       end do
     end do
+    !$OMP END PARALLEL DO
   end if
+
+!Copié la première partie qui correspond au cas implicit
+
+!  do m=1, mN
+!      do l = 1, lN
+!        do k = 1, kN
+!          Fr(k,l,m) = Ek * (CUp_base(k,l,m)*Ut_per(k,l,m) - CUt_base(k,l,m)*Up_per(k,l,m)) &
+!                    & + Ek * (CUp_per(k,l,m)*Ut_base(k,l,m) - CUt_per(k,l,m)*Up_base(k,l,m)) &
+!                   & + Ra * T_real_per(k,l,m) / (Rout*rN(k)**(-1)) + Ek * Ur_rot(k,l,m)
+!          Gt(k,l,m) = (Ek * (CUr_base(k,l,m)*Up_per(k,l,m) - CUp_base(k,l,m)*Ur_per(k,l,m)) &
+!                    & + Ek * (CUr_per(k,l,m)*Up_base(k,l,m) - CUp_per(k,l,m)*Ur_base(k,l,m)) &
+!                    & + Ek * Ut_rot(k,l,m)) / SinTh(l) ! Here we compute Gt = Ft / sin(theta)
+!          Gp(k,l,m) = (Ek * (CUt_base(k,l,m)*Ur_per(k,l,m) - CUr_base(k,l,m)*Ut_per(k,l,m)) &
+!                    & + Ek * (CUt_per(k,l,m)*Ur_base(k,l,m) - CUr_per(k,l,m)*Ut_base(k,l,m)) &
+!                    & + Ek * Up_rot(k,l,m)) / SinTh(l) ! Here we compute Gp = Fp / sin(theta)
+!          UgradT(k,l,m) = - Ur_base(k,l,m) * gTr_per(k,l,m) &
+!                      & - Ut_base(k,l,m) * gTt_per(k,l,m) - Up_base(k,l,m) * gTp_per(k,l,m) &
+!                      & + Ur_per(k,l,m) * (Rout * Rin * rN(k)**(-2) - gTr_base(k,l,m)) &
+!                      & - Ut_per(k,l,m) * gTt_base(k,l,m) - Up_per(k,l,m) * gTp_base(k,l,m) &
+!                      & + T_real_rot(k,l,m)
+!      end do
+!    end do
+!  end do
+
+
 
   !--- Going back to spectral space
   call BackToSpectral(Fr, Fr_spec, KK)    

@@ -38,9 +38,12 @@ module mod_TimeSteppingSolver
   
 contains
 
-subroutine convective_solver()
 
+subroutine convective_solver()
     implicit none
+!    call lin_convective_solver()
+    ! testing     
+
 
     integer :: ios
 
@@ -135,7 +138,7 @@ subroutine convective_solver()
 
             case ("bdf2")
 
-                print*, "Precomputing the Xef, Ye and Yf matrices..."
+               print*, "Precomputing the Xef, Ye and Yf matrices..."
                 call PrecompimplicitXY_BDF()
                 print*, "Precomputing the XT and YT matrices..."
                 call precompXTYT_BDF()
@@ -182,7 +185,7 @@ subroutine convective_solver()
     if (ios /= 0) then 
         ! File does not exist
         open(52,file=trim(directory)//"/Ur_mgep_timeserie.dat", status='unknown', position='append')
-        write(52, "(A15, 4x, A21)") "time", "Ur"
+       write(52, "(A15, 4x, A21)") "time", "Ur"
     else
         ! File exists
         open(52,file=trim(directory)//"/Ur_mgep_timeserie.dat", status='unknown', position='append')
@@ -249,5 +252,183 @@ subroutine convective_solver()
     end do
 
 end subroutine convective_solver
+
+
+! First defined for E_per F_per T_per, the following subroutine are redefined to act on E,F,T
+subroutine compute_lin_time_step_convective_explicit_CN_FBE_EFT()
+    call compute_lin_time_step_convective_explicit_CN_FBE(E,F,T)
+end subroutine compute_lin_time_step_convective_explicit_CN_FBE_EFT
+
+subroutine compute_lin_time_step_convective_implicit_CN_EFT()
+    call compute_lin_time_step_convective_implicit_CN(E,F,T)
+end subroutine compute_lin_time_step_convective_implicit_CN_EFT
+
+subroutine compute_lin_time_step_convective_implicit_FBE_EFT()
+    call compute_lin_time_step_convective_implicit_FBE(E,F,T)
+end subroutine compute_lin_time_step_convective_implicit_FBE_EFT
+
+
+
+
+
+subroutine lin_convective_solver()
+
+    implicit none
+
+    integer :: ios
+
+    procedure(), pointer :: TimeStep_ptr
+
+    ! Check for solver type
+    if (solver == "convective_explicit") then
+
+        ! We begin by precomputing the matrices for the resolution of the linear system
+        call precompBuildXY() ! Compute building blocks for the matrices
+        
+        ! Check for time stepping scheme
+        select case (time_step)
+
+            case ("cn")
+
+                print*, "Precomputing the Xe and Ye matrices..."
+                call precompXeYe()
+                print*, "Precomputing the Xf and Yf matrices..."
+                call precompXfYf()
+                print*, "Precomputing the XT and YT matrices..."
+                call precompXTYT()
+                TimeStep_ptr => compute_lin_time_step_convective_explicit_CN_FBE_EFT
+
+            case ("fbe")
+
+                print*, "Precomputing the Xe and Ye matrices..."
+                call precompXeYe_BDF()
+                print*, "Precomputing the Xf and Yf matrices..."
+                call precompXfYf_BDF()
+                print*, "Precomputing the XT and YT matrices..."
+                call precompXTYT_BDF()
+                TimeStep_ptr => compute_lin_time_step_convective_explicit_CN_FBE_EFT
+
+
+        end select
+
+    else if (solver == "convective_implicit") then
+
+        ! We begin by precomputing the matrices for the resolution of the linear system
+        call precompBuildXY() ! Compute building blocks for the matrices
+        
+        ! Check for time stepping scheme
+        select case (time_step)
+
+            case ("cn")
+
+                print*, "Precomputing the Xef and Yef matrices..."
+                call PrecompimplicitXY()
+                print*, "Precomputing the XT and YT matrices..."
+                call precompXTYT()
+                TimeStep_ptr => compute_lin_time_step_convective_implicit_CN_EFT
+
+            case ("fbe")
+
+                print*, "Precomputing the Xef, Ye and Yf matrices..."
+                call PrecompimplicitXY_BDF()
+                print*, "Precomputing the XT and YT matrices..."
+                call precompXTYT_BDF()
+                TimeStep_ptr => compute_lin_time_step_convective_implicit_FBE_EFT
+
+
+        end select
+
+    end if
+
+    C_base = 0.d0
+    E_base = (0.d0, 0.d0)
+    F_base = (0.d0, 0.d0)
+    T_base = (0.d0, 0.d0)
+    Ur_base  = 0.d0 ; Ut_base  = 0.d0 ; Up_base  = 0.d0
+    cUr_base = 0.d0 ; cUt_base = 0.d0 ; cUp_base = 0.d0
+    gTr_base = 0.d0 ; gTt_base = 0.d0 ; gTp_base = 0.d0
+
+    call init_EF()
+    call init_TEMP()
+
+    time = t0
+    NTS = NTS + step_0
+
+    ! Open file for KE time series, checking if file already exists
+    open(51, file=trim(directory)//"/KE_timeserie.dat", status='unknown', action='read', iostat=ios)
+    close(51)
+    if (ios /= 0) then 
+        ! File does not exist
+        open(51,file=trim(directory)//"/KE_timeserie.dat", status='unknown', position='append')
+        write(51, "(A15, 4x, A23)") "time", "E_kin"
+    else
+        ! File exists
+        open(51,file=trim(directory)//"/KE_timeserie.dat", status='unknown', position='append')
+    end if
+
+    ! Open file to save timeseries of Ur in mid gap, equatorial plane. Checking if file already exists
+    open(52, file=trim(directory)//"/Ur_mgep_timeserie.dat", status='unknown', action='read', iostat=ios)
+    close(52)
+    if (ios /= 0) then 
+        ! File does not exist
+        open(52,file=trim(directory)//"/Ur_mgep_timeserie.dat", status='unknown', position='append')
+        write(52, "(A15, 4x, A21)") "time", "Ur"
+    else
+        ! File exists
+        open(52,file=trim(directory)//"/Ur_mgep_timeserie.dat", status='unknown', position='append')
+    end if
+
+    print*, "Volume of the shell = ", Vol
+
+    print*
+    print*, "################## Starting the simulation #####################"
+    print*
+
+
+    do step = step_0 + 1, NTS
+
+        print*, "############## Starting time step n°", step
+        print*
+
+        time = time + delta_t
+
+        print*, "Time = ", time
+        print*
+
+        ! Now we compute the explicit timestep
+        call TimeStep_ptr()
+
+        ! Testing pour voir si c'est à cause de ça que l'EK est nulle --> fonctionne
+        call comp_U_from_EF(E, F, Ur, Ut, Up)
+        ! Testing pour voir si le postprocessing marche --> fonctionne
+        call ToReal(T, T_real, KK2)  
+        ! Compute, print and save kinetic energy
+        call comp_KineticEnergy(Ur, Ut, Up)
+        ! Check if Ekin is NaN
+        if (ieee_is_nan(Ekin)) then
+            print*, "The Kinetic Energy has turned into a NaN"
+            print*, "Stopping simulation..."
+            stop
+        end if
+        print*, "Kinetic energy:", Ekin
+        write(51,"(E24.16,3x,E24.16)") time, Ekin
+
+        ! Save time series of Ur in mid gap, equatorial plane
+        write(52,"(E24.16,3x,E24.16)") time, Ur(kN / 2, lN / 2, 1)
+
+        ! Save restart files and output files
+        if (mod(step, save_every)==0) then
+            call Output_files(Ur, Up, T_real, step=step)
+            call writeRestart(step=step)
+            call writeDim(step=step)
+        end if
+
+        print*
+        print*, "############## End of time step n°  ",step
+        print*
+
+    end do
+
+end subroutine lin_convective_solver
 
 end module mod_TimeSteppingSolver
