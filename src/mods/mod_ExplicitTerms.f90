@@ -73,7 +73,7 @@ subroutine comp_ExplicitRHS(DE, DF, DT)
 
   double complex, dimension(KK, shtns%nlm) :: UgradT_spec ! UgradT in spectral space
 
-  integer :: k, l
+  integer :: k, l, m
 
   DE = 0.
   DF = 0.
@@ -91,18 +91,19 @@ subroutine comp_ExplicitRHS(DE, DF, DT)
   ! Note 2: As in comp_U, comp_curlU and comp_gradT the theta and phi
   !       components are multiplied by sin(theta) we need to take care of
   !       this when we compute the forcing terms
-
-  do k = 1, kN
-    do l = 1, lN
-      Fr(k, l, :) = Ek * (CUp(k,l,:)*Ut(k,l,:) - CUt(k,l,:)*Up(k,l,:)) &
-                  & + Ra * T_real(k,l,:) / (Rout*rN(k)**(-1)) &
-                  & + 2.d0 * Up(k,l,:) * SinTh(l)
-      Gt(k, l, :) = (Ek * (CUr(k,l,:)*Up(k,l,:) - CUp(k,l,:)*Ur(k,l,:)) &
-                  & + 2.d0 * CosTh(l) * Up(k,l,:)) / SinTh(l) ! Here we compute Gt = Ft / sin(theta)
-      Gp(k, l, :) = (Ek * (CUt(k,l,:)*Ur(k,l,:) - CUr(k,l,:)*Ut(k,l,:)) &
-                  & - 2.d0 * (CosTh(l)*Ut(k,l,:) + SinTh(l)*Ur(k,l,:))) / SinTh(l) ! Here we compute Gp = Fp / sin(theta)
-      UgradT(k, l, :) = Ur(k,l,:) * (Rout * Rin * rN(k)**(-2) - gTr(k,l,:)) &
-                      & - Ut(k,l,:) * gTt(k,l,:) - Up(k,l,:) * gTp(k,l,:)
+  do m=1, mN
+    do k = 1, kN
+      do l = 1, lN
+        Fr(k, l, m) = Ek * (CUp(k,l,m)*Ut(k,l,m) - CUt(k,l,m)*Up(k,l,m)) &
+                  & + Ra * T_real(k,l,m) / (Rout*rN(k)**(-1)) &
+                  & + 2.d0 * Up(k,l,m) * SinTh(l)
+        Gt(k, l, m) = (Ek * (CUr(k,l,m)*Up(k,l,m) - CUp(k,l,m)*Ur(k,l,m)) &
+                  & + 2.d0 * CosTh(l) * Up(k,l,m)) / SinTh(l) ! Here we compute Gt = Ft / sin(theta)
+        Gp(k, l, m) = (Ek * (CUt(k,l,m)*Ur(k,l,m) - CUr(k,l,m)*Ut(k,l,m)) &
+                  & - 2.d0 * (CosTh(l)*Ut(k,l,m) + SinTh(l)*Ur(k,l,m))) / SinTh(l) ! Here we compute Gp = Fp / sin(theta)
+        UgradT(k, l, m) = Ur(k,l,m) * (Rout * Rin * rN(k)**(-2) - gTr(k,l,m)) &
+                      & - Ut(k,l,m) * gTt(k,l,m) - Up(k,l,m) * gTp(k,l,m)
+      end do
     end do
   end do
 
@@ -167,7 +168,7 @@ subroutine comp_ImplicitRHS(DE, DF, DT)
 
   double complex, dimension(KK, shtns%nlm) :: UgradT_spec ! UgradT in spectral space
 
-  integer :: k, l
+  integer :: k, l, m
 
   DE = 0.
   DF = 0.
@@ -176,18 +177,18 @@ subroutine comp_ImplicitRHS(DE, DF, DT)
   call comp_radial_derivatives(E, F, T, Qu, Su, Tu, Qcu, Scu, Tcu, Tr, St)
   call comp_U_cU_gT(Ur, Ut, Up, cUr, cUt, cUp, gTr, gTt, gTp)
   call ToReal(T, T_real, KK2)
-  
-  do k = 1, kN
-    do l = 1, lN
-      Fr(k,l,:) = Ek * (CUp(k,l,:)*Ut(k,l,:) - CUt(k,l,:)*Up(k,l,:)) &
-                  & + Ra * T_real(k,l,:) / (Rout*rN(k)**(-1))
-      Gt(k,l,:) = Ek * (CUr(k,l,:)*Up(k,l,:) - CUp(k,l,:)*Ur(k,l,:)) / SinTh(l) ! Here we compute Gt = Ft / sin(theta)
-      Gp(k,l,:) = Ek * (CUt(k,l,:)*Ur(k,l,:) - CUr(k,l,:)*Ut(k,l,:)) / SinTh(l) ! Here we compute Gp = Fp / sin(theta)
-      UgradT(k,l,:) = Ur(k,l,:) * (Rout * Rin * rN(k)**(-2) - gTr(k,l,:)) &
-                    & - Ut(k,l,:) * gTt(k,l,:) - Up(k,l,:) * gTp(k,l,:)
+  do m=1, mN
+    do k = 1, kN
+      do l = 1, lN
+        Fr(k,l,m) = Ek * (CUp(k,l,m)*Ut(k,l,m) - CUt(k,l,m)*Up(k,l,m)) &
+                  & + Ra * T_real(k,l,m) / (Rout*rN(k)**(-1))
+        Gt(k,l,m) = Ek * (CUr(k,l,m)*Up(k,l,m) - CUp(k,l,m)*Ur(k,l,m)) / SinTh(l) ! Here we compute Gt = Ft / sin(theta)
+        Gp(k,l,m) = Ek * (CUt(k,l,m)*Ur(k,l,m) - CUr(k,l,m)*Ut(k,l,m)) / SinTh(l) ! Here we compute Gp = Fp / sin(theta)
+        UgradT(k,l,m) = Ur(k,l,m) * (Rout * Rin * rN(k)**(-2) - gTr(k,l,m)) &
+                    & - Ut(k,l,m) * gTt(k,l,m) - Up(k,l,m) * gTp(k,l,m)
+      end do
     end do
   end do
-
   !--- Going back to spectral space
   call BackToSpectral(Fr, Fr_spec, KK)    
   call BackToSpectral(Gt, Gt_spec, KK)
@@ -252,7 +253,7 @@ subroutine comp_RHS_with_rot(DE, DF, DT)
   double precision, dimension(kN, lN, mN) :: Ur_rot, Ut_rot, Up_rot, T_real_rot ! To store rotated velocity components and 
                                                                                 ! temperature of rotated base E, F and T
 
-  integer :: k, l
+  integer :: k, l, m
 
   DE = 0.
   DF = 0.
@@ -276,29 +277,33 @@ subroutine comp_RHS_with_rot(DE, DF, DT)
   !       components are multiplied by sin(theta) we need to take care of
   !       this when we compute the forcing terms
 
-  if ((solver == 'newton_convective_implicit') .or. (solver == 'continuation_convective_implicit')) then
-    do k = 1,kN
-      do l = 1,lN
-        Fr(k,l,:) = Ek * (CUp_base(k,l,:)*Ut_base(k,l,:) - CUt_base(k,l,:)*Up_base(k,l,:)) &
-                & + Ra * T_real_base(k,l,:) / (Rout*rN(k)**(-1)) + Ur_rot(k,l,:) * Ek
-        Gt(k,l,:) = Ek * (CUr_base(k,l,:)*Up_base(k,l,:) - CUp_base(k,l,:)*Ur_base(k,l,:) + Ut_rot(k,l,:)) / SinTh(l) ! Here we compute Gt = Ft / sin(theta)
-        Gp(k,l,:) = Ek * (CUt_base(k,l,:)*Ur_base(k,l,:) - CUr_base(k,l,:)*Ut_base(k,l,:) + Up_rot(k,l,:)) / SinTh(l) ! Here we compute Gp = Fp / sin(theta)
-        UgradT(k,l,:) = Ur_base(k,l,:) * (Rout * Rin * rN(k)**(-2) - gTr_base(k,l,:)) &
-                  & - Ut_base(k,l,:) * gTt_base(k,l,:) - Up_base(k,l,:) * gTp_base(k,l,:) + T_real_rot(k,l,:)
+if ((solver == 'newton_convective_implicit') .or. (solver == 'continuation_convective_implicit')) then
+    do m=1, mN
+      do l = 1, lN
+        do k = 1, kN
+          Fr(k,l,m) = Ek * (CUp_base(k,l,m)*Ut_base(k,l,m) - CUt_base(k,l,m)*Up_base(k,l,m)) &
+                & + Ra * T_real_base(k,l,m) / (Rout*rN(k)**(-1)) + Ur_rot(k,l,m) * Ek
+          Gt(k,l,m) = Ek * (CUr_base(k,l,m)*Up_base(k,l,m) - CUp_base(k,l,m)*Ur_base(k,l,m) + Ut_rot(k,l,m)) / SinTh(l) ! Here we compute Gt = Ft / sin(theta)
+          Gp(k,l,m) = Ek * (CUt_base(k,l,m)*Ur_base(k,l,m) - CUr_base(k,l,m)*Ut_base(k,l,m) + Up_rot(k,l,m)) / SinTh(l) ! Here we compute Gp = Fp / sin(theta)
+          UgradT(k,l,m) = Ur_base(k,l,m) * (Rout * Rin * rN(k)**(-2) - gTr_base(k,l,m)) &
+                  & - Ut_base(k,l,m) * gTt_base(k,l,m) - Up_base(k,l,m) * gTp_base(k,l,m) + T_real_rot(k,l,m)
+        end do
       end do
     end do
-  else 
-    do k = 1, kN
+  else
+    do m=1, mN
       do l = 1, lN
-        Fr(k, l, :) = Ek * (CUp_base(k,l,:)*Ut_base(k,l,:) - CUt_base(k,l,:)*Up_base(k,l,:)) &
-                    & + Ra * T_real_base(k,l,:) / (Rout*rN(k)**(-1)) &
-                    & + 2.d0 * Up_base(k,l,:) * SinTh(l) + Ur_rot(k,l,:) * Ek
-        Gt(k, l, :) = (Ek * (CUr_base(k,l,:)*Up_base(k,l,:) - CUp_base(k,l,:)*Ur_base(k,l,:)) &
-                    & + 2.d0 * CosTh(l) * Up_base(k,l,:) + Ut_rot(k,l,:) * Ek) / SinTh(l) ! Here we compute Gt = Ft / sin(theta)
-        Gp(k, l, :) = (Ek * (CUt_base(k,l,:)*Ur_base(k,l,:) - CUr_base(k,l,:)*Ut_base(k,l,:)) &
-                    & - 2.d0 * (CosTh(l)*Ut_base(k,l,:) +  SinTh(l)*Ur_base(k,l,:)) + Up_rot(k,l,:) * Ek) / SinTh(l) ! Here we compute Gp = Fp / sin(theta)
-        UgradT(k, l, :) = Ur_base(k,l,:) * (Rout * Rin * rN(k)**(-2) - gTr_base(k,l,:)) &
-                        & - Ut_base(k,l,:) * gTt_base(k,l,:) - Up_base(k,l,:) * gTp_base(k,l,:) + T_real_rot(k,l,:)
+        do k = 1, kN
+          Fr(k,l,m) = Ek * (CUp_base(k,l,m)*Ut_base(k,l,m) - CUt_base(k,l,m)*Up_base(k,l,m)) &
+                  & + Ra * T_real_base(k,l,m) / (Rout*rN(k)**(-1)) &
+                  & + 2.d0 * Up_base(k,l,m) * SinTh(l) + Ur_rot(k,l,m) * Ek
+          Gt(k,l,m) = (Ek * (CUr_base(k,l,m)*Up_base(k,l,m) - CUp_base(k,l,m)*Ur_base(k,l,m)) &
+                  & + 2.d0 * CosTh(l) * Up_base(k,l,m) + Ut_rot(k,l,m) * Ek) / SinTh(l) ! Here we compute Gt = Ft / sin(theta)
+          Gp(k,l,m) = (Ek * (CUt_base(k,l,m)*Ur_base(k,l,m) - CUr_base(k,l,m)*Ut_base(k,l,m)) &
+                  & - 2.d0 * (CosTh(l)*Ut_base(k,l,m) + SinTh(l)*Ur_base(k,l,m)) + Up_rot(k,l,m) * Ek) / SinTh(l) ! Here we compute Gp = Fp / sin(theta)
+          UgradT(k,l,m) = Ur_base(k,l,m) * (Rout * Rin * rN(k)**(-2) - gTr_base(k,l,m)) &
+                      & - Ut_base(k,l,m) * gTt_base(k,l,m) - Up_base(k,l,m) * gTp_base(k,l,m) + T_real_rot(k,l,m)
+        end do
       end do
     end do
   end if
@@ -378,7 +383,7 @@ subroutine comp_LinNonLin(E_base, F_base, T_base, E_per, F_per, T_per, DE, DF, D
   double complex, dimension(KK2, shtns%nlm) :: T_base_rot, T_per_rot ! To store rotated T_base and T_per
   double precision, dimension(kN, lN, mN) :: Ur_rot, Ut_rot, Up_rot, T_real_rot ! To store rotated velocity components and temperature of rotated state
 
-  integer :: k, l
+  integer :: k, l, m
 
   DE = 0.
   DF = 0.
@@ -415,45 +420,49 @@ subroutine comp_LinNonLin(E_base, F_base, T_base, E_per, F_per, T_per, DE, DF, D
   !       components are multiplied by sin(theta) we need to take care of
   !       this when we compute the forcing terms
 
-  if ((solver == 'newton_convective_implicit') .or. (solver == 'continuation_convective_implicit')) then
-    do k = 1,kN
-      do l = 1,lN
-        Fr(k,l,:) = Ek * (CUp_base(k,l,:)*Ut_per(k,l,:) - CUt_base(k,l,:)*Up_per(k,l,:)) &
-                    & + Ek * (CUp_per(k,l,:)*Ut_base(k,l,:) - CUt_per(k,l,:)*Up_base(k,l,:)) &
-                    & + Ra * T_real_per(k,l,:) / (Rout*rN(k)**(-1))  + Ek * Ur_rot(k,l,:)
-        Gt(k,l,:) = (Ek * (CUr_base(k,l,:)*Up_per(k,l,:) - CUp_base(k,l,:)*Ur_per(k,l,:)) &
-                    & + Ek * (CUr_per(k,l,:)*Up_base(k,l,:) - CUp_per(k,l,:)*Ur_base(k,l,:)) & 
-                    & + Ek * Ut_rot(k,l,:)) / SinTh(l) ! Here we compute Gt = Ft / sin(theta)
-        Gp(k,l,:) = (Ek * (CUt_base(k,l,:)*Ur_per(k,l,:) - CUr_base(k,l,:)*Ut_per(k,l,:)) &
-                    & + Ek * (CUt_per(k,l,:)*Ur_base(k,l,:) - CUr_per(k,l,:)*Ut_base(k,l,:)) & 
-                    & + Ek * Up_rot(k,l,:)) / SinTh(l) ! Here we compute Gp = Fp / sin(theta)
-        UgradT(k,l,:) = - Ur_base(k,l,:) * gTr_per(k,l,:) &
-                      & - Ut_base(k,l,:) * gTt_per(k,l,:) - Up_base(k,l,:) * gTp_per(k,l,:) &
-                      & + Ur_per(k,l,:) * (Rout * Rin * rN(k)**(-2) - gTr_base(k,l,:)) &
-                      & - Ut_per(k,l,:) * gTt_base(k,l,:) - Up_per(k,l,:) * gTp_base(k,l,:) &
-                      & + T_real_rot(k,l,:)
+if ((solver == 'newton_convective_implicit') .or. (solver == 'continuation_convective_implicit')) then
+    do m=1, mN
+      do l = 1, lN
+        do k = 1, kN
+          Fr(k,l,m) = Ek * (CUp_base(k,l,m)*Ut_per(k,l,m) - CUt_base(k,l,m)*Up_per(k,l,m)) &
+                    & + Ek * (CUp_per(k,l,m)*Ut_base(k,l,m) - CUt_per(k,l,m)*Up_base(k,l,m)) &
+                    & + Ra * T_real_per(k,l,m) / (Rout*rN(k)**(-1)) + Ek * Ur_rot(k,l,m)
+          Gt(k,l,m) = (Ek * (CUr_base(k,l,m)*Up_per(k,l,m) - CUp_base(k,l,m)*Ur_per(k,l,m)) &
+                    & + Ek * (CUr_per(k,l,m)*Up_base(k,l,m) - CUp_per(k,l,m)*Ur_base(k,l,m)) &
+                    & + Ek * Ut_rot(k,l,m)) / SinTh(l) ! Here we compute Gt = Ft / sin(theta)
+          Gp(k,l,m) = (Ek * (CUt_base(k,l,m)*Ur_per(k,l,m) - CUr_base(k,l,m)*Ut_per(k,l,m)) &
+                    & + Ek * (CUt_per(k,l,m)*Ur_base(k,l,m) - CUr_per(k,l,m)*Ut_base(k,l,m)) &
+                    & + Ek * Up_rot(k,l,m)) / SinTh(l) ! Here we compute Gp = Fp / sin(theta)
+          UgradT(k,l,m) = - Ur_base(k,l,m) * gTr_per(k,l,m) &
+                      & - Ut_base(k,l,m) * gTt_per(k,l,m) - Up_base(k,l,m) * gTp_per(k,l,m) &
+                      & + Ur_per(k,l,m) * (Rout * Rin * rN(k)**(-2) - gTr_base(k,l,m)) &
+                      & - Ut_per(k,l,m) * gTt_base(k,l,m) - Up_per(k,l,m) * gTp_base(k,l,m) &
+                      & + T_real_rot(k,l,m)
+        end do
       end do
     end do
-  else 
-    do k = 1,kN
-      do l = 1,lN
-        Fr(k,l,:) = Ek * (CUp_base(k,l,:)*Ut_per(k,l,:) - CUt_base(k,l,:)*Up_per(k,l,:)) &
-                  & + Ek * (CUp_per(k,l,:)*Ut_base(k,l,:) - CUt_per(k,l,:)*Up_base(k,l,:)) &
-                  & + Ra * T_real_per(k,l,:) / (Rout*rN(k)**(-1)) &
-                  & + 2.d0 * Up_per(k,l,:) * SinTh(l) + Ek * Ur_rot(k,l,:)
-        Gt(k,l,:) = (Ek * (CUr_base(k,l,:)*Up_per(k,l,:) - CUp_base(k,l,:)*Ur_per(k,l,:)) &
-                  & + Ek * (CUr_per(k,l,:)*Up_base(k,l,:) - CUp_per(k,l,:)*Ur_base(k,l,:)) &
-                  & + 2.d0 * CosTh(l) * Up_per(k,l,:) & 
-                  & + Ek * Ut_rot(k,l,:)) / SinTh(l) ! Here we compute Gt = Ft / sin(theta)
-        Gp(k,l,:) = (Ek * (CUt_base(k,l,:)*Ur_per(k,l,:) - CUr_base(k,l,:)*Ut_per(k,l,:)) &
-                  & + Ek * (CUt_per(k,l,:)*Ur_base(k,l,:) - CUr_per(k,l,:)*Ut_base(k,l,:)) &
-                  & - 2.d0 * (CosTh(l)*Ut_per(k,l,:) +  SinTh(l)*Ur_per(k,l,:)) & 
-                  & + Ek * Up_rot(k,l,:)) / SinTh(l) ! Here we compute Gp = Fp / sin(theta)
-        UgradT(k,l,:) = - Ur_base(k,l,:) * gTr_per(k,l,:) &
-                    & - Ut_base(k,l,:) * gTt_per(k,l,:) - Up_base(k,l,:) * gTp_per(k,l,:) &
-                    & + Ur_per(k,l,:) * (Rout * Rin * rN(k)**(-2) - gTr_base(k,l,:)) &
-                    & - Ut_per(k,l,:) * gTt_base(k,l,:) - Up_per(k,l,:) * gTp_base(k,l,:) &
-                    & + T_real_rot(k,l,:)
+  else
+    do m=1, mN
+      do l = 1, lN
+        do k = 1, kN
+          Fr(k,l,m) = Ek * (CUp_base(k,l,m)*Ut_per(k,l,m) - CUt_base(k,l,m)*Up_per(k,l,m)) &
+                  & + Ek * (CUp_per(k,l,m)*Ut_base(k,l,m) - CUt_per(k,l,m)*Up_base(k,l,m)) &
+                  & + Ra * T_real_per(k,l,m) / (Rout*rN(k)**(-1)) &
+                  & + 2.d0 * Up_per(k,l,m) * SinTh(l) + Ek * Ur_rot(k,l,m)
+          Gt(k,l,m) = (Ek * (CUr_base(k,l,m)*Up_per(k,l,m) - CUp_base(k,l,m)*Ur_per(k,l,m)) &
+                  & + Ek * (CUr_per(k,l,m)*Up_base(k,l,m) - CUp_per(k,l,m)*Ur_base(k,l,m)) &
+                  & + 2.d0 * CosTh(l) * Up_per(k,l,m) &
+                  & + Ek * Ut_rot(k,l,m)) / SinTh(l) ! Here we compute Gt = Ft / sin(theta)
+          Gp(k,l,m) = (Ek * (CUt_base(k,l,m)*Ur_per(k,l,m) - CUr_base(k,l,m)*Ut_per(k,l,m)) &
+                  & + Ek * (CUt_per(k,l,m)*Ur_base(k,l,m) - CUr_per(k,l,m)*Ut_base(k,l,m)) &
+                  & - 2.d0 * (CosTh(l)*Ut_per(k,l,m) + SinTh(l)*Ur_per(k,l,m)) &
+                  & + Ek * Up_rot(k,l,m)) / SinTh(l) ! Here we compute Gp = Fp / sin(theta)
+          UgradT(k,l,m) = - Ur_base(k,l,m) * gTr_per(k,l,m) &
+                      & - Ut_base(k,l,m) * gTt_per(k,l,m) - Up_base(k,l,m) * gTp_per(k,l,m) &
+                      & + Ur_per(k,l,m) * (Rout * Rin * rN(k)**(-2) - gTr_base(k,l,m)) &
+                      & - Ut_per(k,l,m) * gTt_base(k,l,m) - Up_per(k,l,m) * gTp_base(k,l,m) &
+                      & + T_real_rot(k,l,m)
+        end do
       end do
     end do
   end if

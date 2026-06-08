@@ -28,7 +28,7 @@
 ! - compute_time_step_convective_implicit_BDF2: BDF2 timestep using implicit Coriolis.
 ! - compute_lin_time_step_convective_explicit_CN_FBE: CN or FBD linearized timestep using explicit Coriolis.
 ! - compute_lin_time_step_convective_implicit_CN: CN linearized timestep using implicit Coriolis.
-! - compute_lin_time_step_convective_implicit_FBE: FBD linearized timestep using explicit Coriolis.
+! - compute_lin_time_step_convective_implicit_FBE: FBD linearized timestep using explicit Coriolis. erreur ? c'est implicit plutot
 
 module mod_TimeStep
   !$ USE OMP_LIB

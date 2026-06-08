@@ -391,7 +391,7 @@ subroutine precompXeYe()
   integer :: l
 
   if ((solver == "convective_explicit") .or. (solver == "newton_convective_explicit") & 
-    & .or. (solver == "continuation_convective_explicit")) then
+    & .or. (solver == "continuation_convective_explicit") .or. (solver == "arnoldi_convective_explicit")) then
     param = Ek
   end if
 
@@ -419,7 +419,7 @@ subroutine precompXeYe_BDF()
   integer :: l
 
   if ((solver == "convective_explicit") .or. (solver == "newton_convective_explicit") & 
-    & .or. (solver == "continuation_convective_explicit")) then
+    & .or. (solver == "continuation_convective_explicit") .or. (solver == "arnoldi_convective_explicit") ) then
     param = Ek
   end if
 
@@ -447,7 +447,7 @@ subroutine precompXfYf()
   integer :: l
 
   if ((solver == "convective_explicit") .or. (solver == "newton_convective_explicit") & 
-    & .or. (solver == "continuation_convective_explicit")) then
+    & .or. (solver == "continuation_convective_explicit") .or. (solver == "arnoldi_convective_explicit")) then
     param = Ek
   end if
 
@@ -475,7 +475,7 @@ subroutine precompXfYf_BDF()
   integer :: l
 
   if ((solver == "convective_explicit") .or. (solver == "newton_convective_explicit") & 
-    & .or. (solver == "continuation_convective_explicit")) then
+    & .or. (solver == "continuation_convective_explicit") .or. (solver == "arnoldi_convective_explicit")) then
     param = Ek
   end if
 
@@ -685,7 +685,7 @@ subroutine PrecompimplicitXY()
   double precision :: param
 
   if ((solver == "convective_implicit") .or. (solver == "newton_convective_implicit") & 
-    & .or. (solver == "continuation_convective_implicit")) then
+    & .or. (solver == "continuation_convective_implicit") .or. (solver == "arnoldi_convective_implicit"))  then
     param = Ek
   end if
 
@@ -785,7 +785,7 @@ subroutine PrecompimplicitXY_BDF()
   double precision :: param
 
   if ((solver == "convective_implicit") .or. (solver == "newton_convective_implicit") & 
-    & .or. (solver == "continuation_convective_implicit")) then
+    & .or. (solver == "continuation_convective_implicit") .or. (solver == "arnoldi_convective_implicit")) then
     param = Ek
   end if
 

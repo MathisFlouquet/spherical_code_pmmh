@@ -92,8 +92,9 @@ if(NOT HAVE_MKL)
 endif()
 
 # Optional user inputs
-set(USER_FFTW_PATH "" CACHE PATH "Path to FFTW library")
-set(USER_SHTNS_PATH "" CACHE PATH "Path to SHTNS library")
+set(USER_FFTW_PATH   "" CACHE PATH "Path to FFTW library")
+set(USER_SHTNS_PATH  "" CACHE PATH "Path to SHTNS library")
+set(USER_ARPACK_PATH "" CACHE PATH "Path to ARPACK library")
 
 # FFTW
 if(USER_FFTW_PATH)
@@ -118,6 +119,29 @@ endif()
 if(NOT SHTNS_LIB)
     message(FATAL_ERROR "SHTNS library not found. Please specify -DUSER_SHTNS_PATH=/path/to/shtns")
 endif()
+
+# ARPACK
+# Tries to find arpack-ng first (modern packaging), then legacy arpack.
+# On Debian/Ubuntu: apt install libarpack2-dev
+# With arpack-ng built from source, set -DUSER_ARPACK_PATH=/path/to/lib
+if(USER_ARPACK_PATH)
+    message(STATUS "Using user-specified ARPACK path: ${USER_ARPACK_PATH}")
+    find_library(ARPACK_LIB NAMES arpack PATHS ${USER_ARPACK_PATH} REQUIRED)
+else()
+    find_package(arpack-ng QUIET)
+    if(arpack-ng_FOUND)
+        message(STATUS "arpack-ng found via CMake config")
+        set(ARPACK_LIB ARPACK::ARPACK)
+    else()
+        find_library(ARPACK_LIB NAMES arpack)
+    endif()
+endif()
+
+if(NOT ARPACK_LIB)
+    message(FATAL_ERROR "ARPACK library not found. Please specify -DUSER_ARPACK_PATH=/path/to/arpack")
+endif()
+
+message(STATUS "ARPACK library: ${ARPACK_LIB}")
 
 # Collect module files
 file(GLOB MOD_FILES src/mods/*.f90)
@@ -144,6 +168,7 @@ if(HAVE_MKL)
         dl
         ${SHTNS_LIB}
         ${FFTW_LIB}
+        ${ARPACK_LIB}
         m
         c
     )
@@ -154,6 +179,7 @@ else()
         ${EXTRA_LINK_LIBS}
         ${SHTNS_LIB}
         ${FFTW_LIB}
+        ${ARPACK_LIB}
         m
         c
     )
