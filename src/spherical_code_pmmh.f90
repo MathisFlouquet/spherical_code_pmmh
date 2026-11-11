@@ -34,6 +34,7 @@ program spherical_code_pmmh
   use mod_TimeSteppingSolver
   use mod_NewtonSolver
   use mod_ArnoldiSolver
+  use mod_InverseSolver
   use mod_TimeStep
   use mod_IterativeSolvers
   use mod_Output
@@ -86,6 +87,9 @@ program spherical_code_pmmh
   else if ((solver == "arnoldi_convective_explicit") .or. (solver == "arnoldi_convective_implicit")) then
     ! We call the Arnoldi convective solver
     call arnoldi_convective_solver()
+  else if ((solver == "inverse_convective_explicit") .or. (solver == "inverse_convective_implicit")) then
+    ! We call the inverse power method eigenvalue solver
+    call inverse_convective_solver()
   end if
 
 end program spherical_code_pmmh

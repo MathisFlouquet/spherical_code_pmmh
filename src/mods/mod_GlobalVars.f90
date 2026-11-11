@@ -145,6 +145,16 @@ module mod_Globalvars
   double precision :: newt_eps, newt_delta, tol_gmres
   double precision :: C_base = 0., c_per = 0.
 
+  !--- Inverse power method eigenvalue solver
+  integer :: max_inv = 200                 ! Maximum number of inverse power iterations
+  double precision :: inv_eps = 1.d-8      ! Convergence criterion on the eigenvector
+  double precision :: sigma_r = 0.d0     ! Shift (real part): converge to eigenvalue closest to sigma_r + i*sigma_i
+  double precision :: sigma_i = 0.d0       ! Shift (imaginary part). If /= 0, the complex-shift solver is used,
+                                           ! which is the way to reach a Hopf pair (a real shift can never get
+                                           ! closer to a+ib than |b|, so the phase mode at lambda=0 always wins).
+  ! The inverse solver builds its right-hand side (TermeDroite) by reusing the
+  ! time-step matrices (Xef/Yef, Ye_mat/Yf_mat, XT_invYT, ...). No extra matrix.
+
   !--- Continuation method
   double precision :: Ek_final = 0. ! Final value in Ekman continuation
   double precision :: Ra_final = 0. ! Final value in Rayleigh continuation 

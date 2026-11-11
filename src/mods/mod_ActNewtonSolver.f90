@@ -86,6 +86,35 @@ subroutine subA(time_stepping_sub, EFT_in, EFT_out)
 
 end subroutine subA
 
+subroutine subA_eig(time_stepping_sub, EFT_in, EFT_out)
+
+    ! Same operator as subA, i.e. (Phi - I) x where Phi is one linearized
+    ! time step around the base state, but WITHOUT the travelling-wave
+    ! phase condition of the Newton solver: no wavespeed component is
+    ! extracted from the vector (c_per = 0) and no phase is enforced.
+    ! The frame drift C_base of the base state is kept fixed inside the
+    ! linearized operator. Used by the inverse power eigenvalue solver.
+
+    implicit none
+
+    procedure(), pointer, intent(in) :: time_stepping_sub
+
+    double precision, dimension(2 * shtns%nlm * (2 * KK2 + KK4)), intent(inout) :: EFT_in
+    double precision, dimension(2 * shtns%nlm * (2 * KK2 + KK4)), intent(out) :: EFT_out
+
+    c_per = 0.
+
+    ! Set EFT_out = EFT_in
+    EFT_out = EFT_in
+
+    call act_lin_non_lin(time_stepping_sub, EFT_in(1), EFT_in(2 * shtns%nlm * KK2 + 1), &
+                        & EFT_in(2 * shtns%nlm * (KK2 + KK4) + 1))
+
+    ! Compute difference between output and input: (Phi - I) x
+    EFT_out = EFT_in - EFT_out
+
+end subroutine subA_eig
+
 subroutine act_lin_non_lin(time_stepping_sub, E_per_ptr, F_per_ptr, T_per_ptr)
 
     implicit none

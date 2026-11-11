@@ -354,6 +354,9 @@ end subroutine comp_RHS_with_rot
 
 !----------------------------------------------------------------------------
 
+
+
+
 subroutine comp_LinNonLin(E_base, F_base, T_base, E_per, F_per, T_per, DE, DF, DT)
 
   !###########################################################################
@@ -407,7 +410,8 @@ subroutine comp_LinNonLin(E_base, F_base, T_base, E_per, F_per, T_per, DE, DF, D
   call comp_cdphi(C_base, E_per, F_per, T_per, E_per_rot, F_per_rot, T_per_rot)
 
 ! Testing, on commente ça et on reprend les deux dernières lignes seulement
-  if ((solver /= 'arnoldi_convective_explicit') .and. (solver /= 'arnoldi_convective_implicit')) then
+  if ((solver /= 'arnoldi_convective_explicit') .and. (solver /= 'arnoldi_convective_implicit') &
+    & .and. (solver /= 'inverse_convective_explicit') .and. (solver /= 'inverse_convective_implicit')) then
     
     call comp_cdphi(c_per, E_base, F_base, T_base, E_base_rot, F_base_rot, T_base_rot)
     call comp_U_from_EF(E_base_rot + E_per_rot, F_base_rot + F_per_rot, Ur_rot, Ut_rot, Up_rot)
@@ -438,7 +442,7 @@ subroutine comp_LinNonLin(E_base, F_base, T_base, E_per, F_per, T_per, DE, DF, D
 ! J'observe que ya pas de cas arnoldi, donc celui ci était toujours traité en explicit, à voir
 ! pas sur que cela change quelque chose les différences sur Coriolis se font à haute rotation je crois
 if ((solver == 'newton_convective_implicit') .or. (solver == 'continuation_convective_implicit') &
-  & .or. (solver == 'arnoldi_convective_implicit' )) then
+  & .or. (solver == 'arnoldi_convective_implicit' ) .or. (solver == 'inverse_convective_implicit')) then
     !$OMP PARALLEL DO COLLAPSE(3) SCHEDULE(STATIC) PRIVATE(k, l, m)
     do m=1, mN
       do l = 1, lN
@@ -489,28 +493,7 @@ if ((solver == 'newton_convective_implicit') .or. (solver == 'continuation_conve
     !$OMP END PARALLEL DO
   end if
 
-!Copié la première partie qui correspond au cas implicit
 
-!  do m=1, mN
-!      do l = 1, lN
-!        do k = 1, kN
-!          Fr(k,l,m) = Ek * (CUp_base(k,l,m)*Ut_per(k,l,m) - CUt_base(k,l,m)*Up_per(k,l,m)) &
-!                    & + Ek * (CUp_per(k,l,m)*Ut_base(k,l,m) - CUt_per(k,l,m)*Up_base(k,l,m)) &
-!                   & + Ra * T_real_per(k,l,m) / (Rout*rN(k)**(-1)) + Ek * Ur_rot(k,l,m)
-!          Gt(k,l,m) = (Ek * (CUr_base(k,l,m)*Up_per(k,l,m) - CUp_base(k,l,m)*Ur_per(k,l,m)) &
-!                    & + Ek * (CUr_per(k,l,m)*Up_base(k,l,m) - CUp_per(k,l,m)*Ur_base(k,l,m)) &
-!                    & + Ek * Ut_rot(k,l,m)) / SinTh(l) ! Here we compute Gt = Ft / sin(theta)
-!          Gp(k,l,m) = (Ek * (CUt_base(k,l,m)*Ur_per(k,l,m) - CUr_base(k,l,m)*Ut_per(k,l,m)) &
-!                    & + Ek * (CUt_per(k,l,m)*Ur_base(k,l,m) - CUr_per(k,l,m)*Ut_base(k,l,m)) &
-!                    & + Ek * Up_rot(k,l,m)) / SinTh(l) ! Here we compute Gp = Fp / sin(theta)
-!          UgradT(k,l,m) = - Ur_base(k,l,m) * gTr_per(k,l,m) &
-!                      & - Ut_base(k,l,m) * gTt_per(k,l,m) - Up_base(k,l,m) * gTp_per(k,l,m) &
-!                      & + Ur_per(k,l,m) * (Rout * Rin * rN(k)**(-2) - gTr_base(k,l,m)) &
-!                      & - Ut_per(k,l,m) * gTt_base(k,l,m) - Up_per(k,l,m) * gTp_base(k,l,m) &
-!                      & + T_real_rot(k,l,m)
-!      end do
-!    end do
-!  end do
 
 
 
@@ -544,6 +527,25 @@ if ((solver == 'newton_convective_implicit') .or. (solver == 'continuation_conve
   DF(KK + 4, :) = 0.
 
 end subroutine comp_LinNonLin
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 !----------------------------------------------------------------------------
 

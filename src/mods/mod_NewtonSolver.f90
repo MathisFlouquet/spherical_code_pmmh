@@ -745,6 +745,7 @@ subroutine newton_solver(NonLinTimeStep_ptr, LinNonLinTimeStep_ptr, C_base, newt
 
     integer :: i_newt, k, j, lm, k_max, lm_max, lm_init, gmres_iters
 
+    procedure(), pointer :: subA_ptr
     double complex, dimension(:), pointer :: E_ptr_cplx, F_ptr_cplx, T_ptr_cplx
     double precision :: max_E, max_F, max_T
     integer :: loc_max_E, loc_max_F, loc_max_T
@@ -793,7 +794,8 @@ subroutine newton_solver(NonLinTimeStep_ptr, LinNonLinTimeStep_ptr, C_base, newt
         print*, 'This is ||F(U)|| = ', norm_FU
         if (norm_FU <= newt_eps) exit
 
-        call gmresm(LinNonLinTimeStep_ptr, restart_gmres, 2 * shtns%nlm * (2 * KK2 + KK4), max_gmres, &
+        subA_ptr => subA
+        call gmresm(subA_ptr, LinNonLinTimeStep_ptr, restart_gmres, 2 * shtns%nlm * (2 * KK2 + KK4), max_gmres, &
                     & tol_gmres, EFT_RHS, EFT_best, gmres_iters)
 
         ! Save total amount of GMRES iterations

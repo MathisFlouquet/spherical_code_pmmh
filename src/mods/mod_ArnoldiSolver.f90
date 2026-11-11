@@ -39,6 +39,44 @@ subroutine output_vector(E_vec_ptr,F_vec_ptr,T_vec_ptr)
 end subroutine output_vector
  
 ! ===========================================================================
+!  write_mode_restart : write one eigenvector as a restart file.
+!  The packed real vector (E, F, T) is reinterpreted as complex spectral
+!  fields and written with the exact same record structure as
+!  writeRestart, so it can be reread directly by readRestart.
+!  A trailing (t0, step_0) = (0, 0) record is written so the file is read
+!  back as a fresh timestepping restart.
+!  Files are named Restart_mode_<idx>.b in the run directory.
+! ===========================================================================
+ 
+subroutine write_mode_restart(E_vec_ptr, F_vec_ptr, T_vec_ptr, idx)
+ 
+    double precision, dimension(2 * KK2 * shtns%nlm), target :: E_vec_ptr
+    double precision, dimension(2 * KK4 * shtns%nlm), target :: F_vec_ptr
+    double precision, dimension(2 * KK2 * shtns%nlm), target :: T_vec_ptr
+    integer, intent(in) :: idx
+ 
+    double complex, dimension(:,:), pointer :: E_vec
+    double complex, dimension(:,:), pointer :: F_vec
+    double complex, dimension(:,:), pointer :: T_vec
+ 
+    character(len=64) :: fname
+ 
+    call c_f_pointer(c_loc(E_vec_ptr), E_vec, [KK2, shtns%nlm])
+    call c_f_pointer(c_loc(F_vec_ptr), F_vec, [KK4, shtns%nlm])
+    call c_f_pointer(c_loc(T_vec_ptr), T_vec, [KK2, shtns%nlm])
+ 
+    write(fname, '(A,I0,A)') trim(directory)//"/Restart_mode_", idx, ".b"
+    open(unit=71, file=trim(fname), form="unformatted")
+    write(71) E_vec
+    write(71) F_vec
+    write(71) T_vec
+    write(71) 0.0d0    ! t0     -> reread as a timestepping restart
+    write(71) 0        ! step_0
+    close(71)
+ 
+end subroutine write_mode_restart
+ 
+! ===========================================================================
 !  apply_propagator : apply the temporal integration NB_loc times.
 !  Used in ARPACK with the reverse communication loop (ido = 1 or -1)
 ! ===========================================================================
@@ -54,7 +92,7 @@ subroutine apply_propagator(x_in, x_out, n_prop, LinNonLinTimeStep_ptr)
     double precision :: EFT(n_prop)
     integer          :: step, NB_loc
  
-    NB_loc = 100
+    NB_loc = 1000
  
     EFT = x_in
  
@@ -150,23 +188,30 @@ subroutine arnoldi_convective_solver()
     integer          :: matvec_count, restart_count
     logical          :: rvec, first
     character(len=32):: filename
-    
+    integer          :: iunit
  
+
+    ! ==================================================================
+    !  Open output text file
+    ! ==================================================================
+    iunit = 42
+    open(unit=iunit, file='arnoldi_output.txt', status='replace', action='write')
+
     ! ==================================================================
     !  ARPACK parameters
     ! ==================================================================
     n       = 2*(2*KK2+KK4)*shtns%nlm
-    nev     = 3
-    ncv     = 40
-    maxiter =  10
-    tol     = 1.0d-7
+    nev     = 2
+    ncv     = 70
+    maxiter =  4
+    tol     = 1.0d-11
     bmat    = 'I'
     which   = 'LM'
     ldv     = n
     lworkl  = 3*ncv**2 + 6*ncv
  
     ! Propagation parameters (must match apply_propagator)
-    NB_loc = 100
+    NB_loc = 1000
     T_prop = dble(NB_loc) * delta_t
  
     allocate(resid(n))
@@ -200,17 +245,23 @@ subroutine arnoldi_convective_solver()
         select case (time_step)
             case ("cn")
                 print*, "Precomputing the Xe and Ye matrices..."
+                write(iunit,*) "Precomputing the Xe and Ye matrices..."
                 call precompXeYe()
                 print*, "Precomputing the Xf and Yf matrices..."
+                write(iunit,*) "Precomputing the Xf and Yf matrices..."
                 call precompXfYf()
                 print*, "Precomputing the XT and YT matrices..."
+                write(iunit,*) "Precomputing the XT and YT matrices..."
                 call precompXTYT()
             case ("fbe")
                 print*, "Precomputing the Xe and Ye matrices..."
+                write(iunit,*) "Precomputing the Xe and Ye matrices..."
                 call precompXeYe_BDF()
                 print*, "Precomputing the Xf and Yf matrices..."
+                write(iunit,*) "Precomputing the Xf and Yf matrices..."
                 call precompXfYf_BDF()
                 print*, "Precomputing the XT and YT matrices..."
+                write(iunit,*) "Precomputing the XT and YT matrices..."
                 call precompXTYT_BDF()
         end select
  
@@ -221,14 +272,18 @@ subroutine arnoldi_convective_solver()
         select case (time_step)
             case ("cn")
                 print*, "Precomputing the Xef and Yef matrices..."
+                write(iunit,*) "Precomputing the Xef and Yef matrices..."
                 call PrecompimplicitXY()
                 print*, "Precomputing the XT and YT matrices..."
+                write(iunit,*) "Precomputing the XT and YT matrices..."
                 call precompXTYT()
                 LinNonLinTimeStep_ptr => compute_lin_time_step_convective_implicit_CN
             case ("fbe")
                 print*, "Precomputing the Xef, Ye and Yf matrices..."
+                write(iunit,*) "Precomputing the Xef, Ye and Yf matrices..."
                 call PrecompimplicitXY_BDF()
                 print*, "Precomputing the XT and YT matrices..."
+                write(iunit,*) "Precomputing the XT and YT matrices..."
                 call precompXTYT_BDF()
                 LinNonLinTimeStep_ptr => compute_lin_time_step_convective_implicit_FBE
         end select
@@ -236,10 +291,15 @@ subroutine arnoldi_convective_solver()
     end if
  
     print*
+    write(iunit,*)
     print*, "--------------------- Initial values ---------------------------"
+    write(iunit,*) "--------------------- Initial values ---------------------------"
     print*
+    write(iunit,*)
     print*, "Volume of the shell = ", Vol
+    write(iunit,*) "Volume of the shell = ", Vol
     print*, "Reading restart files"
+    write(iunit,*) "Reading restart files"
     call readDim()
     call readRestart()
  
@@ -249,10 +309,10 @@ subroutine arnoldi_convective_solver()
 
 
     ! Pour état conductif, fixer E F T C_base à 0!
-    !E=0
-    !F=0
-    !T=0
-    !C_base=0
+    E=0
+    F=0
+    T=0
+    C_base=0
     E_base=E
     F_base=F
     T_base=T
@@ -293,19 +353,27 @@ subroutine arnoldi_convective_solver()
  
             if (matvec_count == ncv) then   ! If we have built ncv vector, then the first Krylov space is created
                 print*, "--- Initial Krylov space built ---"
+                write(iunit,*) "--- Initial Krylov space built ---"
                 print*, "    matvecs : ", matvec_count
+                write(iunit,*) "    matvecs : ", matvec_count
                 flush(6)
+                flush(iunit)
             else if (matvec_count > ncv) then
                 if (mod(matvec_count - ncv, ncv - nev) == 0) then ! To monitor the number of restart
                     restart_count = restart_count + 1
                     print*, "--- Restart ", restart_count, " / ", maxiter,  &
                             " | matvecs : ", matvec_count,                  &
                             " | converged : ", iparam(5), " / ", nev
+                    write(iunit,*) "--- Restart ", restart_count, " / ", maxiter,  &
+                            " | matvecs : ", matvec_count,                          &
+                            " | converged : ", iparam(5), " / ", nev
                     flush(6)
+                    flush(iunit)
                 end if
             end if
             
             print*, "  wavespeed :", C_base
+            write(iunit,*) "  wavespeed :", C_base
         else
             exit
         end if
@@ -317,16 +385,24 @@ subroutine arnoldi_convective_solver()
     ! ==================================================================
     if (info_arpack < 0) then
         print*, "ARPACK dnaupd error: info =", info_arpack
+        write(iunit,*) "ARPACK dnaupd error: info =", info_arpack
+        close(iunit)
         stop
     else if (info_arpack == 1) then
         print*, "Warning: dnaupd reached maxiter without full convergence."
+        write(iunit,*) "Warning: dnaupd reached maxiter without full convergence."
         print*, "Converged Ritz values:", iparam(5), "/", nev
+        write(iunit,*) "Converged Ritz values:", iparam(5), "/", nev
     else
         print*, "dnaupd converged. Ritz values computed:", iparam(5)
+        write(iunit,*) "dnaupd converged. Ritz values computed:", iparam(5)
     end if
     print*, "Total matvecs  :", matvec_count
+    write(iunit,*) "Total matvecs  :", matvec_count
     print*, "Total restarts :", restart_count
+    write(iunit,*) "Total restarts :", restart_count
     flush(6)
+    flush(iunit)
  
  
     rvec   = .true.
@@ -342,6 +418,8 @@ subroutine arnoldi_convective_solver()
  
     if (info_arpack /= 0) then
         print*, "ARPACK dneupd error: info =", info_arpack
+        write(iunit,*) "ARPACK dneupd error: info =", info_arpack
+        close(iunit)
         stop
     end if
  
@@ -372,10 +450,16 @@ subroutine arnoldi_convective_solver()
     !    Re(u,v) = dot(z_R,v_R) + dot(z_I,v_I)
     ! ==================================================================
     print*
+    write(iunit,*)
     print*, "--- ARPACK IRAM completed ---"
+    write(iunit,*) "--- ARPACK IRAM completed ---"
     print*, "NB_loc =", NB_loc, "  delta_t =", delta_t, "  T_prop =", T_prop
+    write(iunit,*) "NB_loc =", NB_loc, "  delta_t =", delta_t, "  T_prop =", T_prop
     print*
+    write(iunit,*)
     print*, "  (j) | Re(mu)      | Im(mu)      | |mu|        |", &
+            " ||r||/||Pv|| | Re(lambda)  | Im(lambda)  "
+    write(iunit,*) "  (j) | Re(mu)      | Im(mu)      | |mu|        |", &
             " ||r||/||Pv|| | Re(lambda)  | Im(lambda)  "
  
     first = .true. ! eigenvalues comes by pair, first =.true. 
@@ -416,7 +500,15 @@ subroutine arnoldi_convective_solver()
                 " | ", spectral_resid,                                               &
                 " | ", lambda_r,                                                     &
                 " | ", lambda_i                                                     
-
+            write(iunit,'(A,I3,A,ES12.5,A,ES12.5,A,ES12.5,A,ES10.3,A,ES12.5,A,ES12.5)') &
+                "  mode ", j,                                                        &
+                " | ", dr(j),                                                        &
+                " | ", di(j),                                                        &
+                " | ", mu_abs,                                                       &
+                " | ", spectral_resid,                                               &
+                " | ", lambda_r,                                                     &
+                " | ", lambda_i                                                     
+ 
  
         else if (first) then
             ! -----------------------------------------------------------
@@ -486,10 +578,25 @@ subroutine arnoldi_convective_solver()
                 " | ", spectral_resid,                                               &
                 " | ", lambda_r,                                                     &
                 " | ", lambda_i                                                     
-
+            write(iunit,'(A,I3,A,ES12.5,A,ES12.5,A,ES12.5,A,ES10.3,A,ES12.5,A,ES12.5)') &
+                "  mode ", j,                                                        &
+                " | ", dr(j),                                                        &
+                " | ", di(j),                                                        &
+                " | ", mu_abs,                                                       &
+                " | ", spectral_resid,                                               &
+                " | ", lambda_r,                                                     &
+                " | ", lambda_i                                                     
  
             ! Print mode j+1 (conjugate : same sigma, opposite omega)
             print '(A,I3,A,ES12.5,A,ES12.5,A,ES12.5,A,ES10.3,A,ES12.5,A,ES12.5,A,ES12.5,A,ES12.5)', &
+                "  mode ", j+1,                                                      &
+                " | ", dr(j+1),                                                      &
+                " | ", di(j+1),                                                      &
+                " | ", mu_abs,                                                       &
+                " | ", spectral_resid,                                               &
+                " | ", lambda_r,                                                     &
+                " | ", -lambda_i                                                    
+            write(iunit,'(A,I3,A,ES12.5,A,ES12.5,A,ES12.5,A,ES10.3,A,ES12.5,A,ES12.5,A,ES12.5,A,ES12.5)') &
                 "  mode ", j+1,                                                      &
                 " | ", dr(j+1),                                                      &
                 " | ", di(j+1),                                                      &
@@ -507,6 +614,7 @@ subroutine arnoldi_convective_solver()
  
     end do
     flush(6)
+    flush(iunit)
  
     ! ==================================================================
     !  Reconstruct real and imaginary parts of the physical modes
@@ -533,19 +641,42 @@ subroutine arnoldi_convective_solver()
     !  Print summary
     ! ==================================================================
     print*
+    write(iunit,*)
     print*, " ====== ARPACK summary ======"
+    write(iunit,*) " ====== ARPACK summary ======"
     print*, " Size of the matrix is               ", n
+    write(iunit,*) " Size of the matrix is               ", n
     print*, " Number of Ritz values requested      ", nev
+    write(iunit,*) " Number of Ritz values requested      ", nev
     print*, " Number of Arnoldi vectors (NCV)      ", ncv
+    write(iunit,*) " Number of Arnoldi vectors (NCV)      ", ncv
     print*, " Portion of the spectrum: which =     ", which
+    write(iunit,*) " Portion of the spectrum: which =     ", which
     print*, " Number of converged Ritz values      ", nconv
+    write(iunit,*) " Number of converged Ritz values      ", nconv
     print*, " Number of OP*x                       ", iparam(9)
+    write(iunit,*) " Number of OP*x                       ", iparam(9)
     print*, " Number of implicit restarts           ", restart_count
+    write(iunit,*) " Number of implicit restarts           ", restart_count
     print*, " Convergence tolerance                 ", tol
+    write(iunit,*) " Convergence tolerance                 ", tol
     print*
+    write(iunit,*)
     flush(6)
+    flush(iunit)
  
 
+    ! Write Dim_mode.b once (current grid): shared by all Restart_mode_*.b files.
+    ! Dedicated name (NOT Dim.b) so the input Dim.b, which travels with the input
+    ! Restart.b, is never overwritten. Same record structure as writeDim.
+    open(unit=72, file=trim(directory)//"/Dim_mode.b", form="unformatted")
+    write(72) KK
+    write(72) LL
+    write(72) MM
+    write(72) shtns%nlm
+    write(72) mres
+    close(72)
+ 
     j = 1
     do while (j <= nconv)
                 ! On fait des calculs avec act_lin_non_lin sur des vecteurs de taille n
@@ -565,6 +696,9 @@ subroutine arnoldi_convective_solver()
             call output_vector(mode_R(1:2*KK2*shtns%nlm, j),                              &
                                mode_R(2*KK2*shtns%nlm + 1 : 2*(KK2+KK4)*shtns%nlm, j),    &
                                mode_R(2*(KK2+KK4)*shtns%nlm + 1 : 2*(2*KK2+KK4)*shtns%nlm, j))
+            call write_mode_restart(mode_R(1:2*KK2*shtns%nlm, j),                              &
+                               mode_R(2*KK2*shtns%nlm + 1 : 2*(KK2+KK4)*shtns%nlm, j),    &
+                               mode_R(2*(KK2+KK4)*shtns%nlm + 1 : 2*(2*KK2+KK4)*shtns%nlm, j), j)
             j = j + 1
         else
             ! Complex conjugate pair: output real part (mode j) and imaginary part (mode j+1)
@@ -572,17 +706,23 @@ subroutine arnoldi_convective_solver()
             call output_vector(mode_R(1:2*KK2*shtns%nlm, j),                              &
                                mode_R(2*KK2*shtns%nlm + 1 : 2*(KK2+KK4)*shtns%nlm, j),    &
                                mode_R(2*(KK2+KK4)*shtns%nlm + 1 : 2*(2*KK2+KK4)*shtns%nlm, j))
+            call write_mode_restart(mode_R(1:2*KK2*shtns%nlm, j),                              &
+                               mode_R(2*KK2*shtns%nlm + 1 : 2*(KK2+KK4)*shtns%nlm, j),    &
+                               mode_R(2*(KK2+KK4)*shtns%nlm + 1 : 2*(2*KK2+KK4)*shtns%nlm, j), j)
 
             step = j + 1
             call output_vector(mode_I(1:2*KK2*shtns%nlm, j),                              &
                                mode_I(2*KK2*shtns%nlm + 1 : 2*(KK2+KK4)*shtns%nlm, j),    &
                                mode_I(2*(KK2+KK4)*shtns%nlm + 1 : 2*(2*KK2+KK4)*shtns%nlm, j))
+            call write_mode_restart(mode_I(1:2*KK2*shtns%nlm, j),                              &
+                               mode_I(2*KK2*shtns%nlm + 1 : 2*(KK2+KK4)*shtns%nlm, j),    &
+                               mode_I(2*(KK2+KK4)*shtns%nlm + 1 : 2*(2*KK2+KK4)*shtns%nlm, j), j + 1)
             j = j + 2
         end if
     end do
  
- 
- 
+    close(iunit)
+
 end subroutine arnoldi_convective_solver
  
 end module mod_ArnoldiSolver

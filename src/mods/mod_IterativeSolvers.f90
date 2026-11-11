@@ -32,7 +32,7 @@ module mod_IterativeSolvers
   
 contains
 
-subroutine gmresm(time_stepping_sub, m, n, itmax, tol, b, ubest, gmres_iters)
+subroutine gmresm(op_sub, time_stepping_sub, m, n, itmax, tol, b, ubest, gmres_iters)
 
   !----------------------------------------------------------------------
   ! This solver was taken from https://openpipeflow.org/images/d/df/GMRESm.f90
@@ -44,6 +44,7 @@ subroutine gmresm(time_stepping_sub, m, n, itmax, tol, b, ubest, gmres_iters)
   ! requires lapack routines dgelsy, dgesvd.
   !----------------------------------------------------------------------
   ! Inputs
+  !   op_sub  - Procedure pointer: applies the operator A, interface op_sub(time_stepping_sub, x_in, x_out)
   !   m	  - Integer: GMRES dimension
   !   n 	- Integer: The size of the system (number of unknowns).
   !   itmax   - Integer: The maximum number of iterations allowed.
@@ -60,6 +61,7 @@ subroutine gmresm(time_stepping_sub, m, n, itmax, tol, b, ubest, gmres_iters)
 
   implicit none
 
+  procedure(), pointer, intent(in) :: op_sub           ! Operator A of the system A x = b, called as op_sub(time_stepping_sub, x, w)
   procedure(), pointer, intent(in) :: time_stepping_sub
 
   integer, intent(in) :: m, n
@@ -93,13 +95,15 @@ subroutine gmresm(time_stepping_sub, m, n, itmax, tol, b, ubest, gmres_iters)
   integer, dimension(m) :: piv
 
   double precision, save :: beta
-  
+  double precision :: beta0   ! Norm of the very first residual (= ||b||), for the relative stopping criterion
+
   logical :: done
 
   ! Initialize parameters
   its = 0
   x = 0.0
   v = 0.0
+  beta0 = 0.0   ! Will be set to ||b|| at the first residual evaluation
 
   outer_loop: do while (.true.)
 
@@ -113,7 +117,11 @@ subroutine gmresm(time_stepping_sub, m, n, itmax, tol, b, ubest, gmres_iters)
     beta = sqrt(beta)
 
     if (beta /= 0.0) then
-      call subA(time_stepping_sub, x, w)
+      ! op_sub modifies its input in place (act_lin_non_lin overwrites the
+      ! vector with Phi*vector), so x MUST be protected by a copy here.
+      ! Without this, the accumulated solution x is destroyed at every restart.
+      z = x
+      call op_sub(time_stepping_sub, z, w)
     else
       w = 0.0
     end if
@@ -122,6 +130,13 @@ subroutine gmresm(time_stepping_sub, m, n, itmax, tol, b, ubest, gmres_iters)
 
     call dot(n, w, w, beta)
     beta = sqrt(beta)
+
+    ! Store the initial residual norm (= ||b||, since x = 0 on first entry) for
+    ! the relative stopping criterion. Guard against b = 0.
+    if (beta0 == 0.0) then
+      beta0 = beta
+      if (beta0 == 0.0) beta0 = 1.0
+    end if
 
     v(:, 1) = w / beta
 
@@ -132,7 +147,7 @@ subroutine gmresm(time_stepping_sub, m, n, itmax, tol, b, ubest, gmres_iters)
       its = its + 1
       z = v(:, j)
 
-      call subA(time_stepping_sub, z, w)
+      call op_sub(time_stepping_sub, z, w)
       
       ! Orthogonalize w against previous Krylov vectors
       do i = 1, j
@@ -168,8 +183,11 @@ subroutine gmresm(time_stepping_sub, m, n, itmax, tol, b, ubest, gmres_iters)
 
       print*, 'gmresm: iteration = ', its, ' residual = ', res
 
-      ! done = (res <= tol .or. its == imx .or. res > res_) ! From original routine by Willis, A.
-      done = (res <= tol .or. its == itmax)
+      ! Relative stopping criterion: stop when the residual has dropped by a
+      ! factor tol relative to the initial residual ||b||. This is scale-
+      ! invariant, unlike the absolute test res <= tol, which is unreachable
+      ! when ||b|| is itself small (e.g. b = X^-1 dt M u with small dt).
+      done = (res <= tol * beta0 .or. its == itmax)
 
       if (done .or. j == m) then
 

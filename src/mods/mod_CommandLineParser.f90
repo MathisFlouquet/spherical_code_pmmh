@@ -39,7 +39,7 @@ subroutine parse_command_line_arguments()
     ! Declare local variables
     character(len=100) :: arg, param, param_lc, value
     character(len=1024) :: command_line_string
-    character(len=100), dimension(39) :: params_string_array
+    character(len=100), dimension(43) :: params_string_array
     integer :: i, lc, ic
 
     ! Set params_string_array
@@ -52,7 +52,8 @@ subroutine parse_command_line_arguments()
         "-newt_eps", "-newt_delta", "-tol_gmres", "-m_wave", &
         "-time_step", "-restart_filename", "-dim_filename", &
         "-ek_final", "-ra_final", "-delta_param", "-adapt_param", &
-        "-gamma", "-nopt", "-grid_refine", "-gr_threshold" &
+        "-gamma", "-nopt", "-grid_refine", "-gr_threshold", &
+        "-max_inv", "-inv_eps", "-sigma_r", "-sigma_i" &
     ]
 
     ! Set strings to default values
@@ -209,6 +210,18 @@ subroutine parse_command_line_arguments()
             case ("-newt_eps")
                 read(value, *) newt_eps
 
+            case ("-max_inv")
+                read(value, *) max_inv
+
+            case ("-inv_eps")
+                read(value, *) inv_eps
+
+            case ("-sigma_r")
+                read(value, *) sigma_r
+
+            case ("-sigma_i")
+                read(value, *) sigma_i
+
             case ("-newt_delta")
                 read(value, *) newt_delta
 
@@ -303,6 +316,10 @@ subroutine check_arg_validity()
         print*, "Simulation performed using the Arnoldi convective solver with explicit Coriolis"
     else if (solver == "arnoldi_convective_implicit") then
         print*, "Simulation performed using the Arnoldi convective solver with implicit Coriolis"
+    else if (solver == "inverse_convective_explicit") then
+        print*, "Simulation performed using the inverse power method eigenvalue solver with explicit Coriolis"
+    else if (solver == "inverse_convective_implicit") then
+        print*, "Simulation performed using the inverse power method eigenvalue solver with implicit Coriolis"
     else
         print*, "Simulation stopped - solver has an invalid value"
         stop
@@ -314,13 +331,15 @@ subroutine check_arg_validity()
         time_step = 'pc'
     else if (((solver == 'newton_convective_explicit') .or. (solver == 'newton_convective_implicit') .or. & 
         (solver == 'continuation_convective_explicit') .or. (solver == 'continuation_convective_implicit') .or. &
-        (solver == 'arnoldi_convective_explicit') .or. (solver == 'arnoldi_convective_implicit')) .and. &
+        (solver == 'arnoldi_convective_explicit') .or. (solver == 'arnoldi_convective_implicit') .or. &
+        (solver == 'inverse_convective_explicit') .or. (solver == 'inverse_convective_implicit')) .and. &
         & (time_step == 'no')) then
         print*, 'No timestepping scheme selected, switching to Forward-Backward Euler'
         time_step = 'fbe'
     else if (((solver == 'newton_convective_explicit') .or. (solver == 'newton_convective_implicit') .or. & 
         (solver == 'continuation_convective_explicit') .or. (solver == 'continuation_convective_implicit') .or. &
-        (solver == 'arnoldi_convective_explicit') .or. (solver == 'arnoldi_convective_implicit')) .and. &
+        (solver == 'arnoldi_convective_explicit') .or. (solver == 'arnoldi_convective_implicit') .or. &
+        (solver == 'inverse_convective_explicit') .or. (solver == 'inverse_convective_implicit')) .and. &
         & ((time_step == 'pc') .or. (time_step == 'bdf2'))) then
         print*, 'Predictor corrector or BDF2 timestep selected but Newton cannot work with them. ' // &
                 & 'Switching to Forward-Backward Euler'
@@ -342,7 +361,8 @@ subroutine check_arg_validity()
 
     if ((solver == "newton_convective_explicit") .or. (solver == "newton_convective_implicit") & 
         & .or. (solver == "continuation_convective_explicit") .or. (solver == "continuation_convective_implicit") .or. &
-        (solver == 'arnoldi_convective_explicit') .or. (solver == 'arnoldi_convective_implicit')) then
+        (solver == 'arnoldi_convective_explicit') .or. (solver == 'arnoldi_convective_implicit') .or. &
+        (solver == 'inverse_convective_explicit') .or. (solver == 'inverse_convective_implicit')) then
         if ((init /= "no") .or. (init_amp /= 0.)) then
             print*, "Newton or Arnoldi solvers should not have initial condition"
             stop
@@ -442,9 +462,10 @@ subroutine check_arg_validity()
     end if
 
     if (((solver == "newton_convective_explicit") .or. (solver == "newton_convective_implicit") & 
-        & .or. (solver == "continuation_convective_explicit") .or. (solver == "continuation_convective_implicit")) &
+        & .or. (solver == "continuation_convective_explicit") .or. (solver == "continuation_convective_implicit") &
+        & .or. (solver == "inverse_convective_explicit") .or. (solver == "inverse_convective_implicit")) &
         & .and. (NTS /= 0)) then
-        print*, "Newton solver selected, NTS is of no use"
+        print*, "Newton or inverse solver selected, NTS is of no use"
     else if (((solver == "convective_explicit") .or. (solver == "convective_implicit") .or. &
         (solver == 'arnoldi_convective_explicit') .or. (solver == 'arnoldi_convective_implicit')) &
         & .and. (NTS <= 0)) then
@@ -457,7 +478,8 @@ subroutine check_arg_validity()
 
     if (((solver == "newton_convective_explicit") .or. (solver == "newton_convective_implicit") & 
         & .or. (solver == "continuation_convective_explicit") .or. (solver == "continuation_convective_implicit") .or. &
-        (solver == 'arnoldi_convective_explicit') .or. (solver == 'arnoldi_convective_implicit')) &
+        (solver == 'arnoldi_convective_explicit') .or. (solver == 'arnoldi_convective_implicit') .or. &
+        (solver == 'inverse_convective_explicit') .or. (solver == 'inverse_convective_implicit')) &
         & .and. (save_every /= 0)) then
         print*, "Newton solver selected, save_every is of no use"
     else if (((solver == "convective_explicit") .or. (solver == "convective_implicit")) &
@@ -554,6 +576,51 @@ subroutine check_arg_validity()
             stop
         else
             print*, "The solution the Newton solver will look for has an m = ", M_wave, ' azimuthal symmetry'
+        end if
+
+    end if
+
+    if ((solver == "inverse_convective_explicit") .or. (solver == "inverse_convective_implicit")) then
+
+        if (max_inv <= 0) then
+            print*, "Simulation stopped - max_inv has an invalid value"
+            stop
+        else
+            print*, "The maximum number of inverse power iterations is ", max_inv
+        end if
+
+        if (inv_eps <= 0) then
+            print*, "Simulation stopped - inv_eps has an invalid value"
+            stop
+        else
+            print*, "The convergence criterion of the inverse power iteration is ", inv_eps
+        end if
+
+        print*, "The inverse power iteration will target the eigenvalue closest to sigma = ", &
+               & sigma_r, " + i * ", sigma_i
+        if (sigma_i /= 0.) then
+            print*, "Complex shift: the complex-shift solver will be used (needed to reach a Hopf pair)"
+        end if
+
+        if (max_gmres <= 0) then
+            print*, "Simulation stopped - max_gmres has an invalid value"
+            stop
+        else
+            print*, "The number of maximum GMRESm iterations for the inverse solver is ", max_gmres
+        end if
+
+        if (restart_gmres <= 0) then
+            print*, "Simulation stopped - restart_gmres has an invalid value"
+            stop
+        else
+            print*, "GMRESm will restart every ", restart_gmres, " iterations"
+        end if
+
+        if (tol_gmres <= 0) then
+            print*, "Simulation stopped - tol_gmres has an invalid value"
+            stop
+        else
+            print*, "The GMRESm tolerance for the inverse solver is ", tol_gmres
         end if
 
     end if
@@ -667,7 +734,8 @@ subroutine check_arg_validity()
     if (((solver == "convective_explicit") .or. (solver == "convective_implicit").or. &
         & (solver == "newton_convective_explicit") .or. (solver == "newton_convective_implicit") &
         & .or. (solver == "continuation_convective_explicit") .or. (solver == "continuation_convective_implicit") .or. &
-        (solver == 'arnoldi_convective_explicit') .or. (solver == 'arnoldi_convective_implicit')) .and. &
+        (solver == 'arnoldi_convective_explicit') .or. (solver == 'arnoldi_convective_implicit') .or. &
+        (solver == 'inverse_convective_explicit') .or. (solver == 'inverse_convective_implicit')) .and. &
         & (Ro /= 0.)) then
         print*, "Convective solver selected, the Rossby number will not be used"
     else if ((solver == "mhd_explicit") .or. (solver == "mhd_implicit")) then

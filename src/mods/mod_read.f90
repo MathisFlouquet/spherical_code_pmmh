@@ -103,7 +103,9 @@ subroutine readRestart()
     print*, "Starting simulation from time = ", t0, " and timestep = ", step_0
   else if ((solver == "newton_convective_explicit") .or. (solver == "newton_convective_implicit") & 
     & .or. (solver == "continuation_convective_explicit") .or. (solver == "continuation_convective_implicit") .or. &
-    (solver == 'arnoldi_convective_explicit') .or. (solver == 'arnoldi_convective_implicit')) then
+    (solver == 'arnoldi_convective_explicit') &
+      &.or. (solver == 'inverse_convective_explicit') .or. (solver == 'arnoldi_convective_implicit') &
+      &.or. (solver == 'inverse_convective_implicit')) then
     print*, "State wavespeed = ", C_base
   end if
 
