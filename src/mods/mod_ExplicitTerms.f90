@@ -43,8 +43,6 @@ module mod_ExplicitTerms
   use mod_Matrices
   use mod_PrecompSH
   use mod_Tchebyshev
-  use omp_lib
-
 
   implicit none
 
@@ -93,23 +91,22 @@ subroutine comp_ExplicitRHS(DE, DF, DT)
   ! Note 2: As in comp_U, comp_curlU and comp_gradT the theta and phi
   !       components are multiplied by sin(theta) we need to take care of
   !       this when we compute the forcing terms
-  !$OMP PARALLEL DO COLLAPSE(3) SCHEDULE(STATIC) PRIVATE(k, l, m)
-  do m=1, mN
-    do k = 1, kN
-      do l = 1, lN
+
+  do m = 1, mN
+    do l = 1, lN
+      do k = 1, kN
         Fr(k, l, m) = Ek * (CUp(k,l,m)*Ut(k,l,m) - CUt(k,l,m)*Up(k,l,m)) &
-                  & + Ra * T_real(k,l,m) / (Rout*rN(k)**(-1)) &
-                  & + 2.d0 * Up(k,l,m) * SinTh(l)
+                    & + Ra * T_real(k,l,m) / (Rout*rN(k)**(-1)) &
+                    & + 2.d0 * Up(k,l,m) * SinTh(l)
         Gt(k, l, m) = (Ek * (CUr(k,l,m)*Up(k,l,m) - CUp(k,l,m)*Ur(k,l,m)) &
-                  & + 2.d0 * CosTh(l) * Up(k,l,m)) / SinTh(l) ! Here we compute Gt = Ft / sin(theta)
+                    & + 2.d0 * CosTh(l) * Up(k,l,m)) / SinTh(l) ! Here we compute Gt = Ft / sin(theta)
         Gp(k, l, m) = (Ek * (CUt(k,l,m)*Ur(k,l,m) - CUr(k,l,m)*Ut(k,l,m)) &
-                  & - 2.d0 * (CosTh(l)*Ut(k,l,m) + SinTh(l)*Ur(k,l,m))) / SinTh(l) ! Here we compute Gp = Fp / sin(theta)
+                    & - 2.d0 * (CosTh(l)*Ut(k,l,m) + SinTh(l)*Ur(k,l,m))) / SinTh(l) ! Here we compute Gp = Fp / sin(theta)
         UgradT(k, l, m) = Ur(k,l,m) * (Rout * Rin * rN(k)**(-2) - gTr(k,l,m)) &
-                      & - Ut(k,l,m) * gTt(k,l,m) - Up(k,l,m) * gTp(k,l,m)
+                        & - Ut(k,l,m) * gTt(k,l,m) - Up(k,l,m) * gTp(k,l,m)
       end do
     end do
   end do
-  !$OMP END PARALLEL DO
 
   !--- Going back to spectral space
   call BackToSpectral(Fr, Fr_spec, KK)    
@@ -181,20 +178,20 @@ subroutine comp_ImplicitRHS(DE, DF, DT)
   call comp_radial_derivatives(E, F, T, Qu, Su, Tu, Qcu, Scu, Tcu, Tr, St)
   call comp_U_cU_gT(Ur, Ut, Up, cUr, cUt, cUp, gTr, gTt, gTp)
   call ToReal(T, T_real, KK2)
-  !$OMP PARALLEL DO COLLAPSE(3) SCHEDULE(STATIC) PRIVATE(k, l, m)
-  do m=1, mN
+  
+  do m = 1, mN
     do l = 1, lN
-      do k = 1, kN
+        do k = 1, kN
         Fr(k,l,m) = Ek * (CUp(k,l,m)*Ut(k,l,m) - CUt(k,l,m)*Up(k,l,m)) &
-                  & + Ra * T_real(k,l,m) / (Rout*rN(k)**(-1))
+                    & + Ra * T_real(k,l,m) / (Rout*rN(k)**(-1))
         Gt(k,l,m) = Ek * (CUr(k,l,m)*Up(k,l,m) - CUp(k,l,m)*Ur(k,l,m)) / SinTh(l) ! Here we compute Gt = Ft / sin(theta)
         Gp(k,l,m) = Ek * (CUt(k,l,m)*Ur(k,l,m) - CUr(k,l,m)*Ut(k,l,m)) / SinTh(l) ! Here we compute Gp = Fp / sin(theta)
         UgradT(k,l,m) = Ur(k,l,m) * (Rout * Rin * rN(k)**(-2) - gTr(k,l,m)) &
-                    & - Ut(k,l,m) * gTt(k,l,m) - Up(k,l,m) * gTp(k,l,m)
+                      & - Ut(k,l,m) * gTt(k,l,m) - Up(k,l,m) * gTp(k,l,m)
       end do
     end do
   end do
-  !$OMP END PARALLEL DO
+
   !--- Going back to spectral space
   call BackToSpectral(Fr, Fr_spec, KK)    
   call BackToSpectral(Gt, Gt_spec, KK)
@@ -283,39 +280,35 @@ subroutine comp_RHS_with_rot(DE, DF, DT)
   !       components are multiplied by sin(theta) we need to take care of
   !       this when we compute the forcing terms
 
-if ((solver == 'newton_convective_implicit') .or. (solver == 'continuation_convective_implicit')) then
-    !$OMP PARALLEL DO COLLAPSE(3) SCHEDULE(STATIC) PRIVATE(k, l, m)
-    do m=1, mN
-      do l = 1, lN
-        do k = 1, kN
+  if ((solver == 'newton_convective_implicit') .or. (solver == 'continuation_convective_implicit')) then
+    do m = 1, mN
+      do l = 1,lN
+          do k = 1,kN
           Fr(k,l,m) = Ek * (CUp_base(k,l,m)*Ut_base(k,l,m) - CUt_base(k,l,m)*Up_base(k,l,m)) &
-                & + Ra * T_real_base(k,l,m) / (Rout*rN(k)**(-1)) + Ur_rot(k,l,m) * Ek
+                  & + Ra * T_real_base(k,l,m) / (Rout*rN(k)**(-1)) + Ur_rot(k,l,m) * Ek
           Gt(k,l,m) = Ek * (CUr_base(k,l,m)*Up_base(k,l,m) - CUp_base(k,l,m)*Ur_base(k,l,m) + Ut_rot(k,l,m)) / SinTh(l) ! Here we compute Gt = Ft / sin(theta)
           Gp(k,l,m) = Ek * (CUt_base(k,l,m)*Ur_base(k,l,m) - CUr_base(k,l,m)*Ut_base(k,l,m) + Up_rot(k,l,m)) / SinTh(l) ! Here we compute Gp = Fp / sin(theta)
           UgradT(k,l,m) = Ur_base(k,l,m) * (Rout * Rin * rN(k)**(-2) - gTr_base(k,l,m)) &
-                  & - Ut_base(k,l,m) * gTt_base(k,l,m) - Up_base(k,l,m) * gTp_base(k,l,m) + T_real_rot(k,l,m)
+                    & - Ut_base(k,l,m) * gTt_base(k,l,m) - Up_base(k,l,m) * gTp_base(k,l,m) + T_real_rot(k,l,m)
         end do
       end do
     end do
-    !$OMP END PARALLEL DO
-  else
-    !$OMP PARALLEL DO COLLAPSE(3) SCHEDULE(STATIC) PRIVATE(k, l, m)
-    do m=1, mN
+  else 
+    do m = 1, mN
       do l = 1, lN
         do k = 1, kN
-          Fr(k,l,m) = Ek * (CUp_base(k,l,m)*Ut_base(k,l,m) - CUt_base(k,l,m)*Up_base(k,l,m)) &
-                  & + Ra * T_real_base(k,l,m) / (Rout*rN(k)**(-1)) &
-                  & + 2.d0 * Up_base(k,l,m) * SinTh(l) + Ur_rot(k,l,m) * Ek
-          Gt(k,l,m) = (Ek * (CUr_base(k,l,m)*Up_base(k,l,m) - CUp_base(k,l,m)*Ur_base(k,l,m)) &
-                  & + 2.d0 * CosTh(l) * Up_base(k,l,m) + Ut_rot(k,l,m) * Ek) / SinTh(l) ! Here we compute Gt = Ft / sin(theta)
-          Gp(k,l,m) = (Ek * (CUt_base(k,l,m)*Ur_base(k,l,m) - CUr_base(k,l,m)*Ut_base(k,l,m)) &
-                  & - 2.d0 * (CosTh(l)*Ut_base(k,l,m) + SinTh(l)*Ur_base(k,l,m)) + Up_rot(k,l,m) * Ek) / SinTh(l) ! Here we compute Gp = Fp / sin(theta)
-          UgradT(k,l,m) = Ur_base(k,l,m) * (Rout * Rin * rN(k)**(-2) - gTr_base(k,l,m)) &
-                      & - Ut_base(k,l,m) * gTt_base(k,l,m) - Up_base(k,l,m) * gTp_base(k,l,m) + T_real_rot(k,l,m)
+          Fr(k, l, m) = Ek * (CUp_base(k,l,m)*Ut_base(k,l,m) - CUt_base(k,l,m)*Up_base(k,l,m)) &
+                      & + Ra * T_real_base(k,l,m) / (Rout*rN(k)**(-1)) &
+                      & + 2.d0 * Up_base(k,l,m) * SinTh(l) + Ur_rot(k,l,m) * Ek
+          Gt(k, l, m) = (Ek * (CUr_base(k,l,m)*Up_base(k,l,m) - CUp_base(k,l,m)*Ur_base(k,l,m)) &
+                      & + 2.d0 * CosTh(l) * Up_base(k,l,m) + Ut_rot(k,l,m) * Ek) / SinTh(l) ! Here we compute Gt = Ft / sin(theta)
+          Gp(k, l, m) = (Ek * (CUt_base(k,l,m)*Ur_base(k,l,m) - CUr_base(k,l,m)*Ut_base(k,l,m)) &
+                      & - 2.d0 * (CosTh(l)*Ut_base(k,l,m) +  SinTh(l)*Ur_base(k,l,m)) + Up_rot(k,l,m) * Ek) / SinTh(l) ! Here we compute Gp = Fp / sin(theta)
+          UgradT(k, l, m) = Ur_base(k,l,m) * (Rout * Rin * rN(k)**(-2) - gTr_base(k,l,m)) &
+                          & - Ut_base(k,l,m) * gTt_base(k,l,m) - Up_base(k,l,m) * gTp_base(k,l,m) + T_real_rot(k,l,m)
         end do
       end do
     end do
-    !$OMP END PARALLEL DO
   end if
 
   !--- Going back to spectral space
@@ -353,9 +346,6 @@ if ((solver == 'newton_convective_implicit') .or. (solver == 'continuation_conve
 end subroutine comp_RHS_with_rot
 
 !----------------------------------------------------------------------------
-
-
-
 
 subroutine comp_LinNonLin(E_base, F_base, T_base, E_per, F_per, T_per, DE, DF, DT)
 
@@ -409,7 +399,7 @@ subroutine comp_LinNonLin(E_base, F_base, T_base, E_per, F_per, T_per, DE, DF, D
   !--- Differentiating by phi and multiplying by C_base
   call comp_cdphi(C_base, E_per, F_per, T_per, E_per_rot, F_per_rot, T_per_rot)
 
-! Testing, on commente ça et on reprend les deux dernières lignes seulement
+  ! Arnoldi / inverse: linear operator only, no drift-speed perturbation c_per
   if ((solver /= 'arnoldi_convective_explicit') .and. (solver /= 'arnoldi_convective_implicit') &
     & .and. (solver /= 'inverse_convective_explicit') .and. (solver /= 'inverse_convective_implicit')) then
     
@@ -423,9 +413,6 @@ subroutine comp_LinNonLin(E_base, F_base, T_base, E_per, F_per, T_per, DE, DF, D
     call ToReal(T_per_rot, T_real_rot, KK2)
 
   end if
-
-!  call comp_U_from_EF(E_per_rot, F_per_rot, Ur_rot, Ut_rot, Up_rot)
-!  call ToReal(T_per_rot, T_real_rot, KK2)
   
   !------
 
@@ -438,23 +425,43 @@ subroutine comp_LinNonLin(E_base, F_base, T_base, E_per, F_per, T_per, DE, DF, D
   !       components are multiplied by sin(theta) we need to take care of
   !       this when we compute the forcing terms
 
-!Testing on commente tout, hardcode l'intégration linéaire
-! J'observe que ya pas de cas arnoldi, donc celui ci était toujours traité en explicit, à voir
-! pas sur que cela change quelque chose les différences sur Coriolis se font à haute rotation je crois
-if ((solver == 'newton_convective_implicit') .or. (solver == 'continuation_convective_implicit') &
-  & .or. (solver == 'arnoldi_convective_implicit' ) .or. (solver == 'inverse_convective_implicit')) then
-    !$OMP PARALLEL DO COLLAPSE(3) SCHEDULE(STATIC) PRIVATE(k, l, m)
-    do m=1, mN
-      do l = 1, lN
-        do k = 1, kN
+  if ((solver == 'newton_convective_implicit') .or. (solver == 'continuation_convective_implicit') &
+    & .or. (solver == 'arnoldi_convective_implicit') .or. (solver == 'inverse_convective_implicit')) then
+    do m = 1, mN
+      do l = 1,lN
+        do k = 1,kN
+          Fr(k,l,m) = Ek * (CUp_base(k,l,m)*Ut_per(k,l,m) - CUt_base(k,l,m)*Up_per(k,l,m)) &
+                      & + Ek * (CUp_per(k,l,m)*Ut_base(k,l,m) - CUt_per(k,l,m)*Up_base(k,l,m)) &
+                      & + Ra * T_real_per(k,l,m) / (Rout*rN(k)**(-1))  + Ek * Ur_rot(k,l,m)
+          Gt(k,l,m) = (Ek * (CUr_base(k,l,m)*Up_per(k,l,m) - CUp_base(k,l,m)*Ur_per(k,l,m)) &
+                      & + Ek * (CUr_per(k,l,m)*Up_base(k,l,m) - CUp_per(k,l,m)*Ur_base(k,l,m)) & 
+                      & + Ek * Ut_rot(k,l,m)) / SinTh(l) ! Here we compute Gt = Ft / sin(theta)
+          Gp(k,l,m) = (Ek * (CUt_base(k,l,m)*Ur_per(k,l,m) - CUr_base(k,l,m)*Ut_per(k,l,m)) &
+                      & + Ek * (CUt_per(k,l,m)*Ur_base(k,l,m) - CUr_per(k,l,m)*Ut_base(k,l,m)) & 
+                      & + Ek * Up_rot(k,l,m)) / SinTh(l) ! Here we compute Gp = Fp / sin(theta)
+          UgradT(k,l,m) = - Ur_base(k,l,m) * gTr_per(k,l,m) &
+                        & - Ut_base(k,l,m) * gTt_per(k,l,m) - Up_base(k,l,m) * gTp_per(k,l,m) &
+                        & + Ur_per(k,l,m) * (Rout * Rin * rN(k)**(-2) - gTr_base(k,l,m)) &
+                        & - Ut_per(k,l,m) * gTt_base(k,l,m) - Up_per(k,l,m) * gTp_base(k,l,m) &
+                        & + T_real_rot(k,l,m)
+        end do
+      end do
+    end do
+  else 
+    do m = 1, mN
+      do l = 1,lN
+        do k = 1,kN
           Fr(k,l,m) = Ek * (CUp_base(k,l,m)*Ut_per(k,l,m) - CUt_base(k,l,m)*Up_per(k,l,m)) &
                     & + Ek * (CUp_per(k,l,m)*Ut_base(k,l,m) - CUt_per(k,l,m)*Up_base(k,l,m)) &
-                    & + Ra * T_real_per(k,l,m) / (Rout*rN(k)**(-1)) + Ek * Ur_rot(k,l,m)
+                    & + Ra * T_real_per(k,l,m) / (Rout*rN(k)**(-1)) &
+                    & + 2.d0 * Up_per(k,l,m) * SinTh(l) + Ek * Ur_rot(k,l,m)
           Gt(k,l,m) = (Ek * (CUr_base(k,l,m)*Up_per(k,l,m) - CUp_base(k,l,m)*Ur_per(k,l,m)) &
                     & + Ek * (CUr_per(k,l,m)*Up_base(k,l,m) - CUp_per(k,l,m)*Ur_base(k,l,m)) &
+                    & + 2.d0 * CosTh(l) * Up_per(k,l,m) & 
                     & + Ek * Ut_rot(k,l,m)) / SinTh(l) ! Here we compute Gt = Ft / sin(theta)
           Gp(k,l,m) = (Ek * (CUt_base(k,l,m)*Ur_per(k,l,m) - CUr_base(k,l,m)*Ut_per(k,l,m)) &
                     & + Ek * (CUt_per(k,l,m)*Ur_base(k,l,m) - CUr_per(k,l,m)*Ut_base(k,l,m)) &
+                    & - 2.d0 * (CosTh(l)*Ut_per(k,l,m) +  SinTh(l)*Ur_per(k,l,m)) & 
                     & + Ek * Up_rot(k,l,m)) / SinTh(l) ! Here we compute Gp = Fp / sin(theta)
           UgradT(k,l,m) = - Ur_base(k,l,m) * gTr_per(k,l,m) &
                       & - Ut_base(k,l,m) * gTt_per(k,l,m) - Up_base(k,l,m) * gTp_per(k,l,m) &
@@ -464,38 +471,7 @@ if ((solver == 'newton_convective_implicit') .or. (solver == 'continuation_conve
         end do
       end do
     end do
-    !$OMP END PARALLEL DO
-  else
-    !$OMP PARALLEL DO COLLAPSE(3) SCHEDULE(STATIC) PRIVATE(k, l, m)
-    do m=1, mN
-      do l = 1, lN
-        do k = 1, kN
-          Fr(k,l,m) = Ek * (CUp_base(k,l,m)*Ut_per(k,l,m) - CUt_base(k,l,m)*Up_per(k,l,m)) &
-                  & + Ek * (CUp_per(k,l,m)*Ut_base(k,l,m) - CUt_per(k,l,m)*Up_base(k,l,m)) &
-                  & + Ra * T_real_per(k,l,m) / (Rout*rN(k)**(-1)) &
-                  & + 2.d0 * Up_per(k,l,m) * SinTh(l) + Ek * Ur_rot(k,l,m)
-          Gt(k,l,m) = (Ek * (CUr_base(k,l,m)*Up_per(k,l,m) - CUp_base(k,l,m)*Ur_per(k,l,m)) &
-                  & + Ek * (CUr_per(k,l,m)*Up_base(k,l,m) - CUp_per(k,l,m)*Ur_base(k,l,m)) &
-                  & + 2.d0 * CosTh(l) * Up_per(k,l,m) &
-                  & + Ek * Ut_rot(k,l,m)) / SinTh(l) ! Here we compute Gt = Ft / sin(theta)
-          Gp(k,l,m) = (Ek * (CUt_base(k,l,m)*Ur_per(k,l,m) - CUr_base(k,l,m)*Ut_per(k,l,m)) &
-                  & + Ek * (CUt_per(k,l,m)*Ur_base(k,l,m) - CUr_per(k,l,m)*Ut_base(k,l,m)) &
-                  & - 2.d0 * (CosTh(l)*Ut_per(k,l,m) + SinTh(l)*Ur_per(k,l,m)) &
-                  & + Ek * Up_rot(k,l,m)) / SinTh(l) ! Here we compute Gp = Fp / sin(theta)
-          UgradT(k,l,m) = - Ur_base(k,l,m) * gTr_per(k,l,m) &
-                      & - Ut_base(k,l,m) * gTt_per(k,l,m) - Up_base(k,l,m) * gTp_per(k,l,m) &
-                      & + Ur_per(k,l,m) * (Rout * Rin * rN(k)**(-2) - gTr_base(k,l,m)) &
-                      & - Ut_per(k,l,m) * gTt_base(k,l,m) - Up_per(k,l,m) * gTp_base(k,l,m) &
-                      & + T_real_rot(k,l,m)
-        end do
-      end do
-    end do
-    !$OMP END PARALLEL DO
   end if
-
-
-
-
 
   !--- Going back to spectral space
   call BackToSpectral(Fr, Fr_spec, KK)    
@@ -527,25 +503,6 @@ if ((solver == 'newton_convective_implicit') .or. (solver == 'continuation_conve
   DF(KK + 4, :) = 0.
 
 end subroutine comp_LinNonLin
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 !----------------------------------------------------------------------------
 
@@ -603,25 +560,21 @@ subroutine ToReal(T_spec, T_real, k_max)
 
   double precision, dimension(lN, mN) :: Sh             ! Intermediate array for SH transform
   double complex,   dimension(shtns%nlm) :: Slm         ! Intermediate array for SH transform
-  double complex,   dimension(kN, shtns%nlm) :: T_inter ! Intermediate field
+  double complex,   dimension(shtns%nlm, kN) :: T_inter ! Intermediate field (transposed for contiguous access)
 
-  integer :: k, lm
+  integer :: k
 
-  Sh = 0.
-  Slm = 0.
-  T_inter = 0.
   T_real = 0.
 
   !#### 1. Chebyshev -> Real
-  do lm = 1, shtns%nlm
-    T_inter(:kN, lm) = cmplx(real(T_spec(:k_max, lm)) .dot. Chb(:k_max, :kN), &
-                      & aimag(T_spec(:k_max, lm)) .dot. Chb(:k_max, :kN))
-  end do
+  ! Perform 2D matmul for the entire spectral field at once.
+  ! T_spec is (k_max, nlm), Chb is (k_max, kN). Result is (nlm, kN).
+  T_inter = cmplx(matmul(transpose(real(T_spec(:k_max, :))), Chb(:k_max, :kN)), &
+            &     matmul(transpose(aimag(T_spec(:k_max, :))), Chb(:k_max, :kN)))
 
   !#### 2. SH -> Real
   do k = 1, kN
-    Slm = T_inter(k, :)
-    call SH_to_spat(shtns_c, Slm, Sh)
+    call SH_to_spat(shtns_c, T_inter(:, k), Sh)
     T_real(k, :, :) = Sh
   end do
 
@@ -644,27 +597,23 @@ subroutine BackToSpectral(T_real, T_spec, k_max)
 
   double precision, dimension(lN, mN) :: Sh             ! Intermediate array for SH transform
   double complex,   dimension(shtns%nlm) :: Slm         ! Intermediate array for SH transform
-  double complex,   dimension(kN, shtns%nlm) :: T_inter ! Intermediate field
+  double complex,   dimension(shtns%nlm, kN) :: T_inter ! Intermediate field (transposed for contiguous access)
 
-  integer :: k, lm
+  integer :: k
 
-  Sh = 0.
-  Slm = 0.
-  T_inter = 0.
   T_spec = 0.
 
   ! #### 1. Real --> SH
   do k = 1, kN
     Sh = T_real(k, :, :)
-    call spat_to_SH(shtns_c, Sh, Slm)
-    T_inter(k, :) = Slm
+    call spat_to_SH(shtns_c, Sh, T_inter(:, k))
   end do
 
   ! ### 2. Real --> Chebyshev
-  do lm = 1, shtns%nlm
-    T_spec(:k_max, lm) = cmplx(real(T_inter(:kN, lm)) .dot. Chbinv(:kN, :k_max), &
-                        & aimag(T_inter(:kN, lm)) .dot. Chbinv(:kN, :k_max))
-  end do
+  ! Perform 2D matmul for the entire spectral field at once.
+  ! T_inter is (nlm, kN), Chbinv is (kN, k_max). Result is (nlm, k_max).
+  T_spec(:k_max, :) = transpose(cmplx(matmul(real(T_inter), Chbinv(:kN, :k_max)), &
+                      &               matmul(aimag(T_inter), Chbinv(:kN, :k_max))))
 
 end subroutine BackToSpectral
 
@@ -684,32 +633,45 @@ subroutine comp_radial_derivatives(E, F, T, Qu, Su, Tu, Qcu, Scu, Tcu, Tr, St)
 
   double complex, dimension(shtns%nlm, kN), intent(out) :: Qu, Su, Tu, Qcu, Scu, Tcu, Tr, St ! Resulting auxiliary arrays
 
-  integer :: lm
+  integer :: k
 
-  do lm = 1, shtns%nlm
-    ! For U
-    Qu(lm, :) = cmplx(real(F(:, lm)) .dot. ChbR2(:KK4, :kN), &
-                      aimag(F(:, lm)) .dot. ChbR2(:KK4, :kN)) * ll1(lm)
-    Su(lm, :) = cmplx(real(F(:, lm)) .dot. ChbD1R(:KK4, :kN), &
-                      aimag(F(:, lm)) .dot. ChbD1R(:KK4, :kN))
-    Tu(lm, :) = cmplx(real(E(:, lm)) .dot. ChbR(:KK2, :kN), &
-                      aimag(E(:, lm)) .dot. ChbR(:KK2, :kN))
+  ! For U
+  Qu = cmplx(matmul(transpose(real(F(:KK4, :))), ChbR2(:KK4, :kN)), &
+  &          matmul(transpose(aimag(F(:KK4, :))), ChbR2(:KK4, :kN)))
+  do k = 1, kN
+    Qu(:, k) = Qu(:, k) * ll1
+  end do
 
-    ! For curl(U)
-    Qcu(lm, :) = cmplx(real(E(:, lm)) .dot. ChbR2(:KK2, :kN), &
-                      aimag(E(:, lm)) .dot. ChbR2(:KK2, :kN)) * ll1(lm)
-    Scu(lm, :) = cmplx(real(E(:, lm)) .dot. ChbD1R(:KK2, :kN), &
-                      aimag(E(:, lm)) .dot. ChbD1R(:KK2, :kN))
-    Tcu(lm, :) = cmplx(real(F(:, lm)) .dot. (ChbR3(:KK4, :kN) * ll1(lm) - ChbD2R(:KK4, :kN)), &
-                      aimag(F(:, lm)) .dot. (ChbR3(:KK4, :kN) * ll1(lm) - ChbD2R(:KK4, :kN)))
+  Su = cmplx(matmul(transpose(real(F(:KK4, :))), ChbD1R(:KK4, :kN)), &
+  &          matmul(transpose(aimag(F(:KK4, :))), ChbD1R(:KK4, :kN)))
 
-    ! For grad(T)
-    Tr(lm, :) = cmplx(real(T(:, lm)) .dot. ChbD1(:KK2, :kN), &
-                      aimag(T(:, lm)) .dot. ChbD1(:KK2, :kN))
-    St(lm, :) = cmplx(real(T(:, lm)) .dot. ChbR(:KK2, :kN), &
-                      aimag(T(:, lm)) .dot. ChbR(:KK2, :kN))
+  Tu = cmplx(matmul(transpose(real(E(:KK2, :))), ChbR(:KK2, :kN)), &
+  &          matmul(transpose(aimag(E(:KK2, :))), ChbR(:KK2, :kN)))
 
-  end do  
+  ! For curl(U)
+  Qcu = cmplx(matmul(transpose(real(E(:KK2, :))), ChbR2(:KK2, :kN)), &
+  &           matmul(transpose(aimag(E(:KK2, :))), ChbR2(:KK2, :kN)))
+  do k = 1, kN
+    Qcu(:, k) = Qcu(:, k) * ll1
+  end do
+
+  Scu = cmplx(matmul(transpose(real(E(:KK2, :))), ChbD1R(:KK2, :kN)), &
+  &           matmul(transpose(aimag(E(:KK2, :))), ChbD1R(:KK2, :kN)))
+
+  Tcu = cmplx(matmul(transpose(real(F(:KK4, :))), ChbR3(:KK4, :kN)), &
+  &           matmul(transpose(aimag(F(:KK4, :))), ChbR3(:KK4, :kN)))
+  do k = 1, kN
+    Tcu(:, k) = Tcu(:, k) * ll1
+  end do
+  Tcu = Tcu - cmplx(matmul(transpose(real(F(:KK4, :))), ChbD2R(:KK4, :kN)), &
+  &                 matmul(transpose(aimag(F(:KK4, :))), ChbD2R(:KK4, :kN)))
+
+  ! For grad(T)
+  Tr = cmplx(matmul(transpose(real(T(:KK2, :))), ChbD1(:KK2, :kN)), &
+  &          matmul(transpose(aimag(T(:KK2, :))), ChbD1(:KK2, :kN)))
+
+  St = cmplx(matmul(transpose(real(T(:KK2, :))), ChbR(:KK2, :kN)), &
+  &          matmul(transpose(aimag(T(:KK2, :))), ChbR(:KK2, :kN)))
 
 end subroutine comp_radial_derivatives
 
@@ -848,23 +810,20 @@ subroutine comp_U_from_EF(E, F, Ur, Ut, Up)
   double complex,   dimension(KK4, shtns%nlm), intent(in) :: F          ! Input f spectral field
 
   double precision, dimension(kN, lN, mN),  intent(out) :: Ur, Ut, Up   ! Output real fields
+  integer :: k
 
-  integer :: k, lm
+  ! For U
+  Qu = cmplx(matmul(transpose(real(F(:KK4, :))), ChbR2(:KK4, :kN)), &
+  &          matmul(transpose(aimag(F(:KK4, :))), ChbR2(:KK4, :kN)))
+  do k = 1, kN
+    Qu(:, k) = Qu(:, k) * ll1
+  end do
 
-  Sh1 = 0. ; Sh2 = 0. ; Sh3 = 0. ;
-  Ur = 0. ; Ut = 0. ; Up = 0. ;
+  Su = cmplx(matmul(transpose(real(F(:KK4, :))), ChbD1R(:KK4, :kN)), &
+  &          matmul(transpose(aimag(F(:KK4, :))), ChbD1R(:KK4, :kN)))
 
-  do lm = 1, shtns%nlm
-
-    ! For U
-    Qu(lm, :) = cmplx(real(F(:, lm)) .dot. ChbR2(:KK4, :kN), &
-                      aimag(F(:, lm)) .dot. ChbR2(:KK4, :kN)) * ll1(lm)
-    Su(lm, :) = cmplx(real(F(:, lm)) .dot. ChbD1R(:KK4, :kN), &
-                      aimag(F(:, lm)) .dot. ChbD1R(:KK4, :kN))
-    Tu(lm, :) = cmplx(real(E(:, lm)) .dot. ChbR(:KK2, :kN), &
-                      aimag(E(:, lm)) .dot. ChbR(:KK2, :kN))
-
-  end do 
+  Tu = cmplx(matmul(transpose(real(E(:KK2, :))), ChbR(:KK2, :kN)), &
+  &          matmul(transpose(aimag(E(:KK2, :))), ChbR(:KK2, :kN)))
 
   do k = 1, kN
 
@@ -923,17 +882,17 @@ subroutine rCurl(Fr_spec, Gt_spec, Gp_spec, rCF_spec, rCCF_spec)
   end do
 
   ! #### 2. Final computation
-  do lm = 1, shtns%nlm
-    ! For rCF
-    rCF_spec(:, lm) = rCF_spec(:, lm) + cmplx(aimag(Gt_spec(:, lm)), - real(Gt_spec(:, lm))) * dphi(lm) ! This is -d/dphi(G_t)
-    
-    ! For rCCF
-    rCCF_spec(:, lm) = cmplx((Chb_mulR_deriv(:KK, :KK) .dot. real(Gt_spec_th(1:KK, lm))) + &
-                        & - (Chb_mulR_deriv(:KK, :KK) .dot. aimag(Gp_spec(1:KK, lm)) * dphi(lm)) + &
-                        & + (real(Fr_spec(:, lm)) * ll1(lm)), &
-                        & (Chb_mulR_deriv(:KK, :KK) .dot. aimag(Gt_spec_th(1:KK, lm))) + &
-                        & + (Chb_mulR_deriv(:KK, :KK) .dot. real(Gp_spec(1:KK, lm)) * dphi(lm)) + &
-                        & + (aimag(Fr_spec(:, lm)) * ll1(lm))) 
+  ! For rCF
+  rCF_spec = rCF_spec + cmplx(aimag(Gt_spec), - real(Gt_spec)) * spread(dphi, 1, KK)
+
+  ! For rCCF
+  rCCF_spec = cmplx(matmul(Chb_mulR_deriv(:KK, :KK), real(Gt_spec_th(1:KK, :))) - &
+              &     matmul(Chb_mulR_deriv(:KK, :KK), aimag(Gp_spec(1:KK, :))) * spread(dphi, 1, KK), &
+              &     matmul(Chb_mulR_deriv(:KK, :KK), aimag(Gt_spec_th(1:KK, :))) + &
+              &     matmul(Chb_mulR_deriv(:KK, :KK), real(Gp_spec(1:KK, :))) * spread(dphi, 1, KK))
+  
+  do k = 1, KK
+    rCCF_spec(k, :) = rCCF_spec(k, :) + Fr_spec(k, :) * ll1
   end do
 
   ! The following loop fixes a numerical issue and allows for correct computation of rCF up to the l mode LL (excluded)
