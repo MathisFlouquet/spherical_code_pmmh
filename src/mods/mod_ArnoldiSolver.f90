@@ -11,20 +11,29 @@ module mod_ArnoldiSolver
     use mod_ActNewtonSolver
  
     implicit none
- 
+
+    ! Number of linearised time steps in one application of the propagator:
+    ! P = exp(A * T_prop) with T_prop = NB_loc * delta_t. Single definition,
+    ! used both by apply_propagator and to recover lambda = ln(mu) / T_prop.
+    ! T_prop_target (option -T_prop) and nev (option -nev) are in mod_GlobalVars.
+    integer :: NB_loc = 0   ! = nint(T_prop_target / delta_t), set at solver start
+
 contains
  
  
  
-subroutine output_vector(E_vec_ptr,F_vec_ptr,T_vec_ptr)
+subroutine output_vector(E_vec_ptr,F_vec_ptr,T_vec_ptr, ekin_m)
  
     double precision, dimension(2 * KK2 * shtns%nlm), target :: E_vec_ptr 
     double precision, dimension(2 * KK4 * shtns%nlm), target :: F_vec_ptr
     double precision, dimension(2 * KK2 * shtns%nlm), target :: T_vec_ptr 
+    ! Optional: kinetic energy of the field per azimuthal wavenumber m (index m/mres)
+    double precision, dimension(0:MM), intent(out), optional :: ekin_m
  
     double complex, dimension(:,:), pointer :: E_vec
     double complex, dimension(:,:), pointer :: F_vec
     double complex, dimension(:,:), pointer :: T_vec
+    double complex, dimension(:,:), allocatable :: T_save
  
     call c_f_pointer(c_loc(E_vec_ptr), E_vec, [KK2, shtns%nlm])
     call c_f_pointer(c_loc(F_vec_ptr), F_vec, [KK4, shtns%nlm])
@@ -34,7 +43,15 @@ subroutine output_vector(E_vec_ptr,F_vec_ptr,T_vec_ptr)
     call comp_U_from_EF(E_vec, F_vec, Ur, Ut, Up)
     call ToReal(T_vec, T_real, KK2)
  
+    ! Output_files computes T_k_spectral_<step>.dat from the GLOBAL spectral T,
+    ! not from its T_real argument: point T to the field being written, then
+    ! restore it (otherwise the modes' T_k_spectral files show the base state).
+    T_save = T
+    T = T_vec
     call Output_files(Ur, Up, T_real, step)
+    T = T_save
+ 
+    if (present(ekin_m)) call comp_spectral_KE(ekin_m)   ! from Ur, Ut, Up above
  
 end subroutine output_vector
  
@@ -77,6 +94,46 @@ subroutine write_mode_restart(E_vec_ptr, F_vec_ptr, T_vec_ptr, idx)
 end subroutine write_mode_restart
  
 ! ===========================================================================
+!  one_step_lambda : eigenvalue seen by ONE linearised time step, for the
+!  complex Ritz vector u = zR + i zI :
+!     alpha = <u, (Phi - I) u> / <u, u>,   lambda_1 = ln(1 + alpha) / delta_t
+!  ln(mu)/T_prop only gives Im(lambda) modulo 2*pi/T_prop (aliasing as soon
+!  as |Im lambda| > pi/T_prop). lambda_1 is not aliased (|Im lambda| dt << pi)
+!  and is used to pick the right branch.
+! ===========================================================================
+subroutine one_step_lambda(zR, zI, n_prop, LinNonLinTimeStep_ptr, l1r, l1i)
+
+    integer,          intent(in)  :: n_prop
+    double precision, intent(in)  :: zR(n_prop), zI(n_prop)
+    procedure(),      pointer     :: LinNonLinTimeStep_ptr
+    double precision, intent(out) :: l1r, l1i
+
+    double precision, allocatable :: PR(:), PI(:)
+    double precision :: uu, ar, ai, mr, mi
+
+    allocate(PR(n_prop), PI(n_prop))
+    PR = zR
+    call act_lin_non_lin(LinNonLinTimeStep_ptr, PR(1), PR(2*KK2*shtns%nlm + 1), &
+                         PR(2*(KK2+KK4)*shtns%nlm + 1))
+    PI = zI
+    call act_lin_non_lin(LinNonLinTimeStep_ptr, PI(1), PI(2*KK2*shtns%nlm + 1), &
+                         PI(2*(KK2+KK4)*shtns%nlm + 1))
+    PR = PR - zR          ! (Phi - I) zR
+    PI = PI - zI          ! (Phi - I) zI
+
+    uu = dot_product(zR, zR) + dot_product(zI, zI)
+    ar = (dot_product(zR, PR) + dot_product(zI, PI)) / uu
+    ai = (dot_product(zR, PI) - dot_product(zI, PR)) / uu
+    mr = 1.d0 + ar
+    mi = ai
+    l1r = log(sqrt(mr*mr + mi*mi)) / delta_t
+    l1i = atan2(mi, mr) / delta_t
+
+    deallocate(PR, PI)
+
+end subroutine one_step_lambda
+
+! ===========================================================================
 !  apply_propagator : apply the temporal integration NB_loc times.
 !  Used in ARPACK with the reverse communication loop (ido = 1 or -1)
 ! ===========================================================================
@@ -90,10 +147,8 @@ subroutine apply_propagator(x_in, x_out, n_prop, LinNonLinTimeStep_ptr)
     procedure(),      pointer     :: LinNonLinTimeStep_ptr
  
     double precision :: EFT(n_prop)
-    integer          :: step, NB_loc
- 
-    NB_loc = 1000
- 
+    integer          :: step
+
     EFT = x_in
  
     do step = 1, NB_loc
@@ -122,7 +177,7 @@ end subroutine apply_propagator
 subroutine arnoldi_convective_solver()
  
     ! ----- ARPACK parameters -----
-    integer            :: n, nev, ncv, ldv, lworkl, maxiter
+    integer            :: n, ncv, ldv, lworkl, maxiter   ! nev: global (option -nev)
     integer            :: ido, info_arpack
     integer            :: iparam(11), ipntr(14)
     character(len=1)   :: bmat
@@ -173,10 +228,30 @@ subroutine arnoldi_convective_solver()
     double precision :: cos_arg                     ! argument of acos, clamped to [-1,1]
  
     ! ----- physical eigenvalue recovery -----
-    integer          :: NB_loc
     double precision :: T_prop                      ! = NB_loc * delta_t
     double precision :: mu_abs, mu_arg
     double precision :: lambda_r, lambda_i
+    double precision :: lam1_r, lam1_i              ! one-step (non aliased) estimate
+    integer          :: k_alias                     ! 2*pi/T_prop branch of Im(lambda)
+
+    ! ----- diagnostics -----
+    integer(8)       :: clk_start, clk_end, clk_rate
+    double precision :: wall_time                   ! wall-clock time of the dnaupd loop (s)
+    double precision, allocatable :: rz_r(:), rz_i(:), rz_b(:), rz_a(:)  ! last Ritz values (ncv)
+    logical,          allocatable :: rz_done(:)
+    integer          :: n_ritz_out
+    integer(8)       :: clk_solver                  ! start of the solver (total wall time)
+
+    ! ----- results kept for the summary file (index j = Ritz value) -----
+    double precision, allocatable :: ev_lr(:), ev_li(:), ev_mu(:), ev_res(:)   ! lambda, |mu|, residual
+    double precision, allocatable :: ev_l1r(:), ev_l1i(:)  ! one-step estimate (complex pairs)
+    integer,          allocatable :: ev_kind(:)    ! 0 real, 1 first of a pair, 2 conjugate
+    integer,          allocatable :: ev_kal(:)     ! alias branch k (complex pairs)
+    double precision, allocatable :: ev_ke(:,:)    ! kinetic energy per m (0:MM, j)
+    double precision, allocatable :: ke_tmp(:)     ! (0:MM)
+    character(len=100) :: run_dir                  ! -directory of the run
+    character(len=32)  :: status_msg
+    logical          :: conductive_base            ! base state identically zero
  
     ! ----- BLAS / LAPACK -----
     double precision, external :: dnrm2, dlapy2, ddot
@@ -192,26 +267,45 @@ subroutine arnoldi_convective_solver()
  
 
     ! ==================================================================
-    !  Open output text file
+    !  Outputs: progress goes to the console (run.log); the summary
+    !  arnoldi_output.txt is written at the end (write_summary), the
+    !  eigenvectors in the sub-folder Eigenvectors/ of the run directory.
     ! ==================================================================
     iunit = 42
-    open(unit=iunit, file='arnoldi_output.txt', status='replace', action='write')
+    run_dir = directory
+    call system_clock(clk_solver)
 
     ! ==================================================================
     !  ARPACK parameters
     ! ==================================================================
     n       = 2*(2*KK2+KK4)*shtns%nlm
-    nev     = 2
-    ncv     = 70
-    maxiter =  4
-    tol     = 1.0d-11
+    ! nev (option -nev, default 2 = one complex pair) is the number of
+    ! eigenvalues sought. ncv and maxiter are derived from it.
+    !
+    ! Krylov size ncv: ARPACK needs ncv >= nev + 2 and advises ncv >= 2*nev.
+    ! Cost of the search ~ max(ncv + 1, matvecs actually needed) propagator
+    ! calls: a large ncv is wasted on an easy problem, a small one may need
+    ! many restarts (each costs ncv - nev calls) when eigenvalues are close.
+    ! Tests (Ra = 60, m = 4, conductive state, nev = 2, docs/PARAMETRES.md):
+    ! ncv = 6 to 10 was optimal; 3*nev + 4 (= 10 for nev = 2) keeps a margin
+    ! for harder spectra.
+    !
+    ! maxiter = maximum number of implicit restarts, only reached when the
+    ! search fails; generous on purpose.
+    !
+    ! tol is relative to |mu|; the error on lambda is ~ tol / T_prop.
+    ncv     = 3*nev + 4
+    maxiter = 150*nev
+    tol     = 1.0d-9
+    print*, "Arnoldi parameters: nev =", nev, " ncv =", ncv, " maxiter =", maxiter, &
+            " tol =", tol, " T_prop target =", T_prop_target
     bmat    = 'I'
     which   = 'LM'
     ldv     = n
     lworkl  = 3*ncv**2 + 6*ncv
  
-    ! Propagation parameters (must match apply_propagator)
-    NB_loc = 1000
+    ! Propagation time: NB_loc steps of delta_t, T_prop ~ T_prop_target
+    NB_loc = max(1, nint(T_prop_target / delta_t))
     T_prop = dble(NB_loc) * delta_t
  
     allocate(resid(n))
@@ -226,6 +320,15 @@ subroutine arnoldi_convective_solver()
     allocate(mode_R(n, nev+1))
     allocate(mode_I(n, nev+1))
     allocate(ax(n))
+    allocate(ev_lr(nev+1), ev_li(nev+1), ev_mu(nev+1), ev_res(nev+1))
+    allocate(ev_l1r(nev+1), ev_l1i(nev+1), ev_kind(nev+1), ev_kal(nev+1))
+    allocate(ev_ke(0:MM, nev+1), ke_tmp(0:MM))
+    ev_lr = 0.d0; ev_li = 0.d0; ev_mu = 0.d0; ev_res = 0.d0
+    ev_l1r = 0.d0; ev_l1i = 0.d0; ev_kind = 0; ev_kal = 0; ev_ke = 0.d0
+    nconv = 0
+    matvec_count = 0
+    restart_count = 0
+    wall_time = 0.d0
  
     ! ==================================================================
     !  ARPACK iparam control 
@@ -245,23 +348,17 @@ subroutine arnoldi_convective_solver()
         select case (time_step)
             case ("cn")
                 print*, "Precomputing the Xe and Ye matrices..."
-                write(iunit,*) "Precomputing the Xe and Ye matrices..."
                 call precompXeYe()
                 print*, "Precomputing the Xf and Yf matrices..."
-                write(iunit,*) "Precomputing the Xf and Yf matrices..."
                 call precompXfYf()
                 print*, "Precomputing the XT and YT matrices..."
-                write(iunit,*) "Precomputing the XT and YT matrices..."
                 call precompXTYT()
             case ("fbe")
                 print*, "Precomputing the Xe and Ye matrices..."
-                write(iunit,*) "Precomputing the Xe and Ye matrices..."
                 call precompXeYe_BDF()
                 print*, "Precomputing the Xf and Yf matrices..."
-                write(iunit,*) "Precomputing the Xf and Yf matrices..."
                 call precompXfYf_BDF()
                 print*, "Precomputing the XT and YT matrices..."
-                write(iunit,*) "Precomputing the XT and YT matrices..."
                 call precompXTYT_BDF()
         end select
  
@@ -272,18 +369,14 @@ subroutine arnoldi_convective_solver()
         select case (time_step)
             case ("cn")
                 print*, "Precomputing the Xef and Yef matrices..."
-                write(iunit,*) "Precomputing the Xef and Yef matrices..."
                 call PrecompimplicitXY()
                 print*, "Precomputing the XT and YT matrices..."
-                write(iunit,*) "Precomputing the XT and YT matrices..."
                 call precompXTYT()
                 LinNonLinTimeStep_ptr => compute_lin_time_step_convective_implicit_CN
             case ("fbe")
                 print*, "Precomputing the Xef, Ye and Yf matrices..."
-                write(iunit,*) "Precomputing the Xef, Ye and Yf matrices..."
                 call PrecompimplicitXY_BDF()
                 print*, "Precomputing the XT and YT matrices..."
-                write(iunit,*) "Precomputing the XT and YT matrices..."
                 call precompXTYT_BDF()
                 LinNonLinTimeStep_ptr => compute_lin_time_step_convective_implicit_FBE
         end select
@@ -291,15 +384,10 @@ subroutine arnoldi_convective_solver()
     end if
  
     print*
-    write(iunit,*)
     print*, "--------------------- Initial values ---------------------------"
-    write(iunit,*) "--------------------- Initial values ---------------------------"
     print*
-    write(iunit,*)
     print*, "Volume of the shell = ", Vol
-    write(iunit,*) "Volume of the shell = ", Vol
     print*, "Reading restart files"
-    write(iunit,*) "Reading restart files"
     call readDim()
     call readRestart()
  
@@ -317,6 +405,10 @@ subroutine arnoldi_convective_solver()
     F_base=F
     T_base=T
     
+    ! Reported in the summary: catches a forgotten conductive-state hardcode
+    conductive_base = (maxval(abs(E_base)) == 0.d0) .and. (maxval(abs(F_base)) == 0.d0) &
+                      .and. (maxval(abs(T_base)) == 0.d0)
+
     call comp_radial_derivatives(E_base, F_base, T_base, Qu, Su, Tu, Qcu, Scu, Tcu, Tr, St)
     call comp_U_cU_gT(Ur_base, Ut_base, Up_base, cUr_base, cUt_base, cUp_base, gTr_base, gTt_base, gTp_base)
  
@@ -339,6 +431,7 @@ subroutine arnoldi_convective_solver()
     ido          = 0
     matvec_count = 0
     restart_count= 0
+    call system_clock(clk_start, clk_rate)
  
     do
         call dnaupd(ido, bmat, n, which, nev, tol,  &
@@ -353,27 +446,19 @@ subroutine arnoldi_convective_solver()
  
             if (matvec_count == ncv) then   ! If we have built ncv vector, then the first Krylov space is created
                 print*, "--- Initial Krylov space built ---"
-                write(iunit,*) "--- Initial Krylov space built ---"
                 print*, "    matvecs : ", matvec_count
-                write(iunit,*) "    matvecs : ", matvec_count
                 flush(6)
-                flush(iunit)
             else if (matvec_count > ncv) then
                 if (mod(matvec_count - ncv, ncv - nev) == 0) then ! To monitor the number of restart
                     restart_count = restart_count + 1
                     print*, "--- Restart ", restart_count, " / ", maxiter,  &
                             " | matvecs : ", matvec_count,                  &
                             " | converged : ", iparam(5), " / ", nev
-                    write(iunit,*) "--- Restart ", restart_count, " / ", maxiter,  &
-                            " | matvecs : ", matvec_count,                          &
-                            " | converged : ", iparam(5), " / ", nev
                     flush(6)
-                    flush(iunit)
                 end if
             end if
             
             print*, "  wavespeed :", C_base
-            write(iunit,*) "  wavespeed :", C_base
         else
             exit
         end if
@@ -383,26 +468,46 @@ subroutine arnoldi_convective_solver()
     ! ==================================================================
     !  Check dnaupd return code
     ! ==================================================================
+    call system_clock(clk_end)
+    wall_time = dble(clk_end - clk_start) / dble(clk_rate)
     if (info_arpack < 0) then
         print*, "ARPACK dnaupd error: info =", info_arpack
-        write(iunit,*) "ARPACK dnaupd error: info =", info_arpack
-        close(iunit)
+        write(status_msg,'(A,I0)') "dnaupd error, info = ", info_arpack
+        call write_summary(status_msg)
         stop
     else if (info_arpack == 1) then
         print*, "Warning: dnaupd reached maxiter without full convergence."
-        write(iunit,*) "Warning: dnaupd reached maxiter without full convergence."
         print*, "Converged Ritz values:", iparam(5), "/", nev
-        write(iunit,*) "Converged Ritz values:", iparam(5), "/", nev
     else
         print*, "dnaupd converged. Ritz values computed:", iparam(5)
-        write(iunit,*) "dnaupd converged. Ritz values computed:", iparam(5)
     end if
     print*, "Total matvecs  :", matvec_count
-    write(iunit,*) "Total matvecs  :", matvec_count
     print*, "Total restarts :", restart_count
-    write(iunit,*) "Total restarts :", restart_count
+    print*, "Wall time of the Arnoldi search (s) :", wall_time
     flush(6)
-    flush(iunit)
+
+    ! ------------------------------------------------------------------
+    !  Last Ritz values of the Hessenberg matrix (converged or not), from
+    !  workl(ipntr(6:8)), sorted by decreasing |mu|. Useful when the run
+    !  did not converge: shows what the search was heading to and how far
+    !  (Ritz estimate / |mu|). Im(lambda) here is the principal branch
+    !  arg(mu)/T_prop, i.e. known only modulo 2*pi/T_prop.
+    ! ------------------------------------------------------------------
+    allocate(rz_r(ncv), rz_i(ncv), rz_b(ncv), rz_a(ncv), rz_done(ncv))
+    rz_r = workl(ipntr(6):ipntr(6)+ncv-1)
+    rz_i = workl(ipntr(7):ipntr(7)+ncv-1)
+    rz_b = workl(ipntr(8):ipntr(8)+ncv-1)
+    rz_a = sqrt(rz_r**2 + rz_i**2)
+    rz_done = .false.
+    n_ritz_out = min(ncv, 6)
+    print*, "Last Ritz values (|mu| descending): |mu|, Re(lambda), Im(lambda) mod 2pi/T, estimate/|mu|"
+    do i = 1, n_ritz_out
+        j = maxloc(rz_a, 1, mask = .not. rz_done)
+        rz_done(j) = .true.
+        print '(I4,4ES14.5)', i, rz_a(j), log(rz_a(j)) / T_prop, &
+              atan2(rz_i(j), rz_r(j)) / T_prop, rz_b(j) / rz_a(j)
+    end do
+    flush(6)
  
  
     rvec   = .true.
@@ -418,11 +523,11 @@ subroutine arnoldi_convective_solver()
  
     if (info_arpack /= 0) then
         print*, "ARPACK dneupd error: info =", info_arpack
-        write(iunit,*) "ARPACK dneupd error: info =", info_arpack
-        close(iunit)
+        write(status_msg,'(A,I0)') "dneupd error, info = ", info_arpack
+        call write_summary(status_msg)
         stop
     end if
- 
+
     nconv = iparam(5)
  
     ! ==================================================================
@@ -450,16 +555,10 @@ subroutine arnoldi_convective_solver()
     !    Re(u,v) = dot(z_R,v_R) + dot(z_I,v_I)
     ! ==================================================================
     print*
-    write(iunit,*)
     print*, "--- ARPACK IRAM completed ---"
-    write(iunit,*) "--- ARPACK IRAM completed ---"
     print*, "NB_loc =", NB_loc, "  delta_t =", delta_t, "  T_prop =", T_prop
-    write(iunit,*) "NB_loc =", NB_loc, "  delta_t =", delta_t, "  T_prop =", T_prop
     print*
-    write(iunit,*)
     print*, "  (j) | Re(mu)      | Im(mu)      | |mu|        |", &
-            " ||r||/||Pv|| | Re(lambda)  | Im(lambda)  "
-    write(iunit,*) "  (j) | Re(mu)      | Im(mu)      | |mu|        |", &
             " ||r||/||Pv|| | Re(lambda)  | Im(lambda)  "
  
     first = .true. ! eigenvalues comes by pair, first =.true. 
@@ -500,14 +599,9 @@ subroutine arnoldi_convective_solver()
                 " | ", spectral_resid,                                               &
                 " | ", lambda_r,                                                     &
                 " | ", lambda_i                                                     
-            write(iunit,'(A,I3,A,ES12.5,A,ES12.5,A,ES12.5,A,ES10.3,A,ES12.5,A,ES12.5)') &
-                "  mode ", j,                                                        &
-                " | ", dr(j),                                                        &
-                " | ", di(j),                                                        &
-                " | ", mu_abs,                                                       &
-                " | ", spectral_resid,                                               &
-                " | ", lambda_r,                                                     &
-                " | ", lambda_i                                                     
+            ev_kind(j) = 0
+            ev_lr(j) = lambda_r;  ev_li(j) = lambda_i
+            ev_mu(j) = mu_abs;    ev_res(j) = spectral_resid
  
  
         else if (first) then
@@ -568,6 +662,13 @@ subroutine arnoldi_convective_solver()
             mu_arg   = atan2(di(j), dr(j))
             lambda_r = log(mu_abs) / T_prop
             lambda_i = mu_arg / T_prop
+
+            ! Remove the 2*pi/T_prop aliasing of Im(lambda) using one time step
+            call one_step_lambda(z(1,j), z(1,j+1), n, LinNonLinTimeStep_ptr, lam1_r, lam1_i)
+            k_alias  = nint((lam1_i * T_prop - mu_arg) / (2.d0 * acos(-1.d0)))
+            lambda_i = (mu_arg + 2.d0 * acos(-1.d0) * dble(k_alias)) / T_prop
+            print '(A,ES12.5,A,ES12.5,A,I0)', "  one-step lambda = ", lam1_r, " + i ", lam1_i, &
+                "   -> alias branch k = ", k_alias
  
             ! Print mode j
             print '(A,I3,A,ES12.5,A,ES12.5,A,ES12.5,A,ES10.3,A,ES12.5,A,ES12.5)', &
@@ -578,14 +679,10 @@ subroutine arnoldi_convective_solver()
                 " | ", spectral_resid,                                               &
                 " | ", lambda_r,                                                     &
                 " | ", lambda_i                                                     
-            write(iunit,'(A,I3,A,ES12.5,A,ES12.5,A,ES12.5,A,ES10.3,A,ES12.5,A,ES12.5)') &
-                "  mode ", j,                                                        &
-                " | ", dr(j),                                                        &
-                " | ", di(j),                                                        &
-                " | ", mu_abs,                                                       &
-                " | ", spectral_resid,                                               &
-                " | ", lambda_r,                                                     &
-                " | ", lambda_i                                                     
+            ev_kind(j) = 1
+            ev_lr(j) = lambda_r;  ev_li(j) = lambda_i
+            ev_mu(j) = mu_abs;    ev_res(j) = spectral_resid
+            ev_l1r(j) = lam1_r;   ev_l1i(j) = lam1_i;   ev_kal(j) = k_alias
  
             ! Print mode j+1 (conjugate : same sigma, opposite omega)
             print '(A,I3,A,ES12.5,A,ES12.5,A,ES12.5,A,ES10.3,A,ES12.5,A,ES12.5,A,ES12.5,A,ES12.5)', &
@@ -596,14 +693,11 @@ subroutine arnoldi_convective_solver()
                 " | ", spectral_resid,                                               &
                 " | ", lambda_r,                                                     &
                 " | ", -lambda_i                                                    
-            write(iunit,'(A,I3,A,ES12.5,A,ES12.5,A,ES12.5,A,ES10.3,A,ES12.5,A,ES12.5,A,ES12.5,A,ES12.5)') &
-                "  mode ", j+1,                                                      &
-                " | ", dr(j+1),                                                      &
-                " | ", di(j+1),                                                      &
-                " | ", mu_abs,                                                       &
-                " | ", spectral_resid,                                               &
-                " | ", lambda_r,                                                     &
-                " | ", -lambda_i                                                    
+            if (j + 1 <= nconv) then
+                ev_kind(j+1) = 2
+                ev_lr(j+1) = lambda_r;  ev_li(j+1) = -lambda_i
+                ev_mu(j+1) = mu_abs;    ev_res(j+1) = spectral_resid
+            end if
  
             first = .false.
  
@@ -614,7 +708,6 @@ subroutine arnoldi_convective_solver()
  
     end do
     flush(6)
-    flush(iunit)
  
     ! ==================================================================
     !  Reconstruct real and imaginary parts of the physical modes
@@ -641,30 +734,34 @@ subroutine arnoldi_convective_solver()
     !  Print summary
     ! ==================================================================
     print*
-    write(iunit,*)
     print*, " ====== ARPACK summary ======"
-    write(iunit,*) " ====== ARPACK summary ======"
     print*, " Size of the matrix is               ", n
-    write(iunit,*) " Size of the matrix is               ", n
     print*, " Number of Ritz values requested      ", nev
-    write(iunit,*) " Number of Ritz values requested      ", nev
     print*, " Number of Arnoldi vectors (NCV)      ", ncv
-    write(iunit,*) " Number of Arnoldi vectors (NCV)      ", ncv
     print*, " Portion of the spectrum: which =     ", which
-    write(iunit,*) " Portion of the spectrum: which =     ", which
     print*, " Number of converged Ritz values      ", nconv
-    write(iunit,*) " Number of converged Ritz values      ", nconv
     print*, " Number of OP*x                       ", iparam(9)
-    write(iunit,*) " Number of OP*x                       ", iparam(9)
     print*, " Number of implicit restarts           ", restart_count
-    write(iunit,*) " Number of implicit restarts           ", restart_count
     print*, " Convergence tolerance                 ", tol
-    write(iunit,*) " Convergence tolerance                 ", tol
     print*
-    write(iunit,*)
     flush(6)
-    flush(iunit)
  
+
+    ! ==================================================================
+    !  Eigenvectors -> sub-folder Eigenvectors/ of the run directory:
+    !  Restart_mode_<j>.b + Dim_mode.b (readable as restart) and the
+    !  visualisation files Data_*_<j>.dat, Ekin_spectral_<j>.dat,
+    !  T_k_spectral_<j>.dat, r/theta/phi.dat. The writing routines use the
+    !  global "directory", which is redirected here and restored after.
+    !  For a complex pair, j = real part and j+1 = imaginary part.
+    ! ==================================================================
+    if (len_trim(run_dir) + len("/Eigenvectors") <= len(directory)) then
+        directory = trim(run_dir)//"/Eigenvectors"
+        call execute_command_line('mkdir -p "'//trim(directory)//'"')
+    else
+        print*, "Warning: directory name too long, eigenvectors written in ", trim(run_dir)
+    end if
+    call output_coordinates()
 
     ! Write Dim_mode.b once (current grid): shared by all Restart_mode_*.b files.
     ! Dedicated name (NOT Dim.b) so the input Dim.b, which travels with the input
@@ -679,23 +776,17 @@ subroutine arnoldi_convective_solver()
  
     j = 1
     do while (j <= nconv)
-                ! On fait des calculs avec act_lin_non_lin sur des vecteurs de taille n
-        ! c'est à dire de taille 2*(2KK2+KK4)*shtns%nlm, ce sont des vecteurs 1D réels représentants
-        ! des vecteurs 2D réels/1D complexes.
-        ! Or on obtient alors des vecteurs propres de act_lin_non_lin qui sont complexes conjugués.
-        ! Un vecteur propre a donc une partie réelle de taille n, et une partie imaginaire de taille n
-        ! Mais ce n'est pas grave, act_lin_non_lin c'est un certain opérateur L :
-        ! L=exp(NB*deltaT*A) et A et l'opérateur qui nous intéresse.
-        ! Or alors, les vecteurs propres de L et A sont les mêmes, et les valeurs propres de L 
-        ! sont simplements les valeurs propres de A auxquelles on applique exp(Nb*deltaT*...)
-        ! On va donc considérer que la partie réelle et la partie imaginaire des vecteurs propres sont des
-        ! solutions à part entières
+        ! The eigenvectors of P = exp(T_prop A) are those of A. A complex
+        ! eigenvector u = z_R + i z_I is stored as two real fields (real part
+        ! j, imaginary part j+1); the physical perturbation is
+        ! Re(u exp(lambda t)) = exp(sigma t) (z_R cos(omega t) - z_I sin(omega t)).
         if (di(j) == 0.0d0) then
             ! Real eigenvalue: only a real eigenvector, no imaginary part to output
             step = j
             call output_vector(mode_R(1:2*KK2*shtns%nlm, j),                              &
                                mode_R(2*KK2*shtns%nlm + 1 : 2*(KK2+KK4)*shtns%nlm, j),    &
-                               mode_R(2*(KK2+KK4)*shtns%nlm + 1 : 2*(2*KK2+KK4)*shtns%nlm, j))
+                               mode_R(2*(KK2+KK4)*shtns%nlm + 1 : 2*(2*KK2+KK4)*shtns%nlm, j), &
+                               ev_ke(:, j))
             call write_mode_restart(mode_R(1:2*KK2*shtns%nlm, j),                              &
                                mode_R(2*KK2*shtns%nlm + 1 : 2*(KK2+KK4)*shtns%nlm, j),    &
                                mode_R(2*(KK2+KK4)*shtns%nlm + 1 : 2*(2*KK2+KK4)*shtns%nlm, j), j)
@@ -705,7 +796,8 @@ subroutine arnoldi_convective_solver()
             step = j
             call output_vector(mode_R(1:2*KK2*shtns%nlm, j),                              &
                                mode_R(2*KK2*shtns%nlm + 1 : 2*(KK2+KK4)*shtns%nlm, j),    &
-                               mode_R(2*(KK2+KK4)*shtns%nlm + 1 : 2*(2*KK2+KK4)*shtns%nlm, j))
+                               mode_R(2*(KK2+KK4)*shtns%nlm + 1 : 2*(2*KK2+KK4)*shtns%nlm, j), &
+                               ev_ke(:, j))
             call write_mode_restart(mode_R(1:2*KK2*shtns%nlm, j),                              &
                                mode_R(2*KK2*shtns%nlm + 1 : 2*(KK2+KK4)*shtns%nlm, j),    &
                                mode_R(2*(KK2+KK4)*shtns%nlm + 1 : 2*(2*KK2+KK4)*shtns%nlm, j), j)
@@ -713,15 +805,137 @@ subroutine arnoldi_convective_solver()
             step = j + 1
             call output_vector(mode_I(1:2*KK2*shtns%nlm, j),                              &
                                mode_I(2*KK2*shtns%nlm + 1 : 2*(KK2+KK4)*shtns%nlm, j),    &
-                               mode_I(2*(KK2+KK4)*shtns%nlm + 1 : 2*(2*KK2+KK4)*shtns%nlm, j))
+                               mode_I(2*(KK2+KK4)*shtns%nlm + 1 : 2*(2*KK2+KK4)*shtns%nlm, j), &
+                               ke_tmp)
             call write_mode_restart(mode_I(1:2*KK2*shtns%nlm, j),                              &
                                mode_I(2*KK2*shtns%nlm + 1 : 2*(KK2+KK4)*shtns%nlm, j),    &
                                mode_I(2*(KK2+KK4)*shtns%nlm + 1 : 2*(2*KK2+KK4)*shtns%nlm, j), j + 1)
+            ! Energy of the complex mode = real part + imaginary part
+            ev_ke(:, j) = ev_ke(:, j) + ke_tmp
+            if (j + 1 <= nev + 1) ev_ke(:, j+1) = ev_ke(:, j)
             j = j + 2
         end if
     end do
- 
-    close(iunit)
+
+    directory = run_dir
+
+    if (info_arpack == 0 .and. nconv >= nev) then
+        status_msg = "converged"
+    else
+        status_msg = "NOT fully converged"
+    end if
+    call write_summary(status_msg)
+    print*, "Summary written in ", trim(run_dir)//"/arnoldi_output.txt"
+
+contains
+
+    ! ------------------------------------------------------------------
+    !  write_summary : readable report of the run in arnoldi_output.txt
+    !  (parameters, search statistics, eigenvalues, azimuthal content of
+    !  each eigenvector, files written, search diagnostics).
+    ! ------------------------------------------------------------------
+    subroutine write_summary(status)
+        character(len=*), intent(in) :: status
+        character(len=2048) :: cmd
+        character(len=8)    :: d8
+        character(len=10)   :: t10
+        integer(8)          :: clk_now
+        integer             :: jj, ii, m_dom
+        double precision    :: ke_tot, total_time
+        character(len=100)  :: files
+
+        call system_clock(clk_now)
+        total_time = dble(clk_now - clk_solver) / dble(clk_rate)
+        call date_and_time(d8, t10)
+        call get_command(cmd)
+
+        open(unit=iunit, file=trim(run_dir)//'/arnoldi_output.txt', status='replace', action='write')
+        write(iunit,'(A)') "======================================================================"
+        write(iunit,'(A)') " Arnoldi (ARPACK) - eigenvalues of the linearised operator"
+        write(iunit,'(A)') "======================================================================"
+        write(iunit,'(A)') " Date    : "//d8(1:4)//"-"//d8(5:6)//"-"//d8(7:8)//" "// &
+                           t10(1:2)//":"//t10(3:4)//":"//t10(5:6)
+        write(iunit,'(A)') " Command : "//trim(cmd)
+        write(iunit,'(A)')
+        write(iunit,'(A)') " --- Physics"
+        write(iunit,'(A,ES12.5,A,ES12.5,A,ES12.5)') "  Ra = ", Ra, "   Ek = ", Ek, "   Pr = ", Pr
+        if (conductive_base) then
+            write(iunit,'(A,ES12.5)') "  Base state : zero (conductive state), C_base = ", C_base
+        else
+            write(iunit,'(A,ES12.5)') "  Base state : "//trim(restart_filename)//", C_base = ", C_base
+        end if
+        write(iunit,'(A)') " --- Resolution"
+        write(iunit,'(A,I0,A,I0,A,I0,A,I0,A,I0,A)') "  KK = ", KK, "   LL = ", LL, "   MM = ", MM, &
+            "   mres = ", mres, "   (problem size n = ", n, ")"
+        write(iunit,'(A)') " --- Method"
+        write(iunit,'(A)') "  solver = "//trim(solver)//"   time_step = "//trim(time_step)
+        write(iunit,'(A,ES10.3,A,ES10.3,A,I0,A)') "  delta_t = ", delta_t, "   T_prop = ", T_prop, &
+            "   (NB_loc = ", NB_loc, " steps per propagator call)"
+        write(iunit,'(A,I0,A,I0,A,I0,A,ES9.2,A)') "  nev = ", nev, "   ncv = ", ncv, &
+            "   maxiter = ", maxiter, "   tol = ", tol, "   which = "//which
+        write(iunit,'(A)')
+        write(iunit,'(A)') " --- Search"
+        write(iunit,'(A,I0,A,I0,A)') "  Status            : "//trim(status)//" (", nconv, " / ", nev, &
+            " converged Ritz values)"
+        write(iunit,'(A,I0,A,I0)') "  Propagator calls  : ", matvec_count, "   restarts : ", restart_count
+        write(iunit,'(A,F10.1,A,F10.1,A)') "  Wall time         : ", wall_time, " s (search), ", &
+            total_time, " s (total)"
+        write(iunit,'(A)')
+        write(iunit,'(A)') " --- Eigenvalues   lambda = sigma + i omega = ln(mu) / T_prop"
+        write(iunit,'(A)') "  Perturbation ~ Re( u exp(lambda t) ); Im(lambda) branch fixed with one time step."
+        write(iunit,'(A)') "  m : azimuthal wavenumber carrying most of the kinetic energy of the eigenvector."
+        write(iunit,'(A)')
+        write(iunit,'(A)') "   j |     sigma       omega     |    |mu|     residual |  m  KE frac | files in Eigenvectors/"
+        do jj = 1, nconv
+            ke_tot = sum(ev_ke(:, jj))
+            if (ke_tot > 0.d0) then
+                m_dom = maxloc(ev_ke(:, jj), 1) - 1
+            else
+                m_dom = 0
+            end if
+            select case (ev_kind(jj))
+                case (0)
+                    write(files,'(A,I0,A)') "Restart_mode_", jj, ".b (real eigenvector)"
+                case (1)
+                    write(files,'(A,I0,A,I0,A)') "Restart_mode_", jj, ".b = real part, _", jj+1, ".b = imag. part"
+                case default
+                    write(files,'(A,I0)') "complex conjugate of ", jj-1
+            end select
+            if (ke_tot > 0.d0) then
+                write(iunit,'(I4,A,2ES12.4,A,ES11.4,ES10.2,A,I3,F7.3,A)') jj, " | ", ev_lr(jj), ev_li(jj), &
+                    " | ", ev_mu(jj), ev_res(jj), " | ", m_dom*mres, ev_ke(m_dom, jj) / ke_tot, &
+                    "  | "//trim(files)
+            else
+                write(iunit,'(I4,A,2ES12.4,A,ES11.4,ES10.2,A)') jj, " | ", ev_lr(jj), ev_li(jj), &
+                    " | ", ev_mu(jj), ev_res(jj), " |     -      | "//trim(files)
+            end if
+        end do
+        if (nconv == 0) write(iunit,'(A)') "  (no converged eigenvalue)"
+        write(iunit,'(A)')
+        write(iunit,'(A)') " --- Files"
+        write(iunit,'(A)') "  Eigenvectors/Restart_mode_<j>.b + Dim_mode.b : eigenvector j, readable as a restart"
+        write(iunit,'(A)') "  Eigenvectors/Data_{eq_plane,mer_plane,mid_gap}_<j>.dat, r/theta/phi.dat : visualisation"
+        write(iunit,'(A)') "  Eigenvectors/Ekin_spectral_<j>.dat (KE per m), T_k_spectral_<j>.dat (T per Chebyshev k)"
+        write(iunit,'(A)') "  Data_*_0.dat, Ekin_spectral_0.dat, ... in the run directory : base state"
+        write(iunit,'(A)')
+        write(iunit,'(A)') " --- Diagnostics"
+        do jj = 1, nconv
+            if (ev_kind(jj) == 1) write(iunit,'(A,I0,A,ES12.5,A,ES12.5,A,I0)') "  pair ", jj, &
+                ": one-step lambda = ", ev_l1r(jj), " + i ", ev_l1i(jj), "   alias branch k = ", ev_kal(jj)
+        end do
+        write(iunit,'(A)') "  Last Ritz values of the search (|mu| descending; Im(lambda) modulo 2 pi / T_prop):"
+        write(iunit,'(A)') "     i |    |mu|      sigma       omega mod   estimate/|mu|"
+        if (allocated(rz_a)) then
+            rz_done = .false.
+            do ii = 1, min(ncv, 6)
+                jj = maxloc(rz_a, 1, mask = .not. rz_done)
+                rz_done(jj) = .true.
+                write(iunit,'(I6,A,4ES12.4)') ii, " | ", rz_a(jj), log(rz_a(jj)) / T_prop, &
+                    atan2(rz_i(jj), rz_r(jj)) / T_prop, rz_b(jj) / rz_a(jj)
+            end do
+        end if
+        close(iunit)
+    end subroutine write_summary
 
 end subroutine arnoldi_convective_solver
  

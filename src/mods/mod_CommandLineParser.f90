@@ -39,7 +39,7 @@ subroutine parse_command_line_arguments()
     ! Declare local variables
     character(len=100) :: arg, param, param_lc, value
     character(len=1024) :: command_line_string
-    character(len=100), dimension(43) :: params_string_array
+    character(len=100), dimension(45) :: params_string_array
     integer :: i, lc, ic
 
     ! Set params_string_array
@@ -53,7 +53,8 @@ subroutine parse_command_line_arguments()
         "-time_step", "-restart_filename", "-dim_filename", &
         "-ek_final", "-ra_final", "-delta_param", "-adapt_param", &
         "-gamma", "-nopt", "-grid_refine", "-gr_threshold", &
-        "-max_inv", "-inv_eps", "-sigma_r", "-sigma_i" &
+        "-max_inv", "-inv_eps", "-sigma_r", "-sigma_i", &
+        "-nev", "-t_prop" &
     ]
 
     ! Set strings to default values
@@ -221,6 +222,12 @@ subroutine parse_command_line_arguments()
 
             case ("-sigma_i")
                 read(value, *) sigma_i
+
+            case ("-nev")
+                read(value, *) nev
+
+            case ("-t_prop")
+                read(value, *) T_prop_target
 
             case ("-newt_delta")
                 read(value, *) newt_delta
@@ -463,16 +470,15 @@ subroutine check_arg_validity()
 
     if (((solver == "newton_convective_explicit") .or. (solver == "newton_convective_implicit") & 
         & .or. (solver == "continuation_convective_explicit") .or. (solver == "continuation_convective_implicit") &
-        & .or. (solver == "inverse_convective_explicit") .or. (solver == "inverse_convective_implicit")) &
+        & .or. (solver == "inverse_convective_explicit") .or. (solver == "inverse_convective_implicit") &
+        & .or. (solver == "arnoldi_convective_explicit") .or. (solver == "arnoldi_convective_implicit")) &
         & .and. (NTS /= 0)) then
-        print*, "Newton or inverse solver selected, NTS is of no use"
-    else if (((solver == "convective_explicit") .or. (solver == "convective_implicit") .or. &
-        (solver == 'arnoldi_convective_explicit') .or. (solver == 'arnoldi_convective_implicit')) &
+        print*, "Newton, inverse or Arnoldi solver selected, NTS is of no use"
+    else if (((solver == "convective_explicit") .or. (solver == "convective_implicit")) &
         & .and. (NTS <= 0)) then
         print *, "Simulation stopped - NTS has an invalid value"
         stop
-    else if ((solver == "convective_explicit") .or. (solver == "convective_implicit") .or. &
-        (solver == 'arnoldi_convective_explicit') .or. (solver == 'arnoldi_convective_implicit')) then
+    else if ((solver == "convective_explicit") .or. (solver == "convective_implicit")) then
         print*, "Number of iterations = ", NTS
     end if
 
@@ -576,6 +582,25 @@ subroutine check_arg_validity()
             stop
         else
             print*, "The solution the Newton solver will look for has an m = ", M_wave, ' azimuthal symmetry'
+        end if
+
+    end if
+
+    if ((solver == "arnoldi_convective_explicit") .or. (solver == "arnoldi_convective_implicit")) then
+
+        if (nev <= 0) then
+            print*, "Simulation stopped - nev has an invalid value"
+            stop
+        else
+            print*, "Number of eigenvalues sought by Arnoldi (nev) = ", nev
+        end if
+
+        if (T_prop_target <= 0.) then
+            print*, "Simulation stopped - T_prop has an invalid value"
+            stop
+        else
+            print*, "Arnoldi propagation time T_prop = ", T_prop_target, &
+                  & " (NB_loc = ", max(1, nint(T_prop_target / delta_t)), " time steps)"
         end if
 
     end if

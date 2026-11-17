@@ -155,6 +155,11 @@ module mod_Globalvars
   ! The inverse solver builds its right-hand side (TermeDroite) by reusing the
   ! time-step matrices (Xef/Yef, Ye_mat/Yf_mat, XT_invYT, ...). No extra matrix.
 
+  !--- Arnoldi (ARPACK) eigenvalue solver
+  integer :: nev = 2                       ! Number of eigenvalues sought (a complex pair counts for 2)
+  double precision :: T_prop_target = 0.1d0 ! Propagation time of P = exp(A T_prop); NB_loc = nint(T_prop_target/delta_t)
+                                           ! The Krylov size ncv and maxiter are functions of nev, set in mod_ArnoldiSolver.
+
   !--- Continuation method
   double precision :: Ek_final = 0. ! Final value in Ekman continuation
   double precision :: Ra_final = 0. ! Final value in Rayleigh continuation 
