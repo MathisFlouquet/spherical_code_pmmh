@@ -395,17 +395,7 @@ subroutine arnoldi_convective_solver()
     F_base = F
     T_base = T
 
-
-    ! Pour état conductif, fixer E F T C_base à 0!
-    E=0
-    F=0
-    T=0
-    C_base=0
-    E_base=E
-    F_base=F
-    T_base=T
-    
-    ! Reported in the summary: catches a forgotten conductive-state hardcode
+    ! Reported in the summary: flags a zero base state (conductive state)
     conductive_base = (maxval(abs(E_base)) == 0.d0) .and. (maxval(abs(F_base)) == 0.d0) &
                       .and. (maxval(abs(T_base)) == 0.d0)
 
